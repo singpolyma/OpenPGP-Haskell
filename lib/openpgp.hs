@@ -4,9 +4,27 @@ import Data.Bits
 import Data.Word
 import qualified Data.ByteString.Lazy as LZ
 import qualified Data.ByteString.Lazy.UTF8 as LZ
+import qualified Codec.Compression.Zlib.Raw as Zip
+import qualified Codec.Compression.Zlib as Zlib
+import qualified Codec.Compression.BZip as BZip2
 
 newtype Message = Message [Packet] deriving Show
-data Packet = EmptyPacket | Len Word8 Word32 | UserIDPacket String deriving Show
+
+data Packet =
+	CompressedDataPacket {
+		algorithm::CompressionAlgorithm,
+		message::Message
+	} |
+	LiteralDataPacket {
+		format::Char,
+		filename::String,
+		timestamp::Word32,
+		content::LZ.ByteString
+	} |
+	UserIDPacket String
+	deriving Show
+
+data CompressionAlgorithm = Uncompressed | ZIP | ZLIB | BZip2 deriving Show
 
 -- A message is encoded as a list that takes the entire file
 instance Binary Message where
@@ -76,6 +94,44 @@ parse_old_length tag =
 			return (fromIntegral len)
 
 parse_packet :: Word8 -> Get Packet
+-- CompressedDataPacket, http://tools.ietf.org/html/rfc4880#section-5.6
+parse_packet  8 = do
+	algorithm <- get :: Get Word8
+	message <- getRemainingLazyByteString
+	case algorithm of
+		0 ->
+			return (CompressedDataPacket {
+				algorithm = Uncompressed,
+				message = runGet (get :: Get Message) message
+			})
+		1 ->
+			return (CompressedDataPacket {
+				algorithm = ZIP,
+				message = runGet (get :: Get Message) (Zip.decompress message)
+			})
+		2 ->
+			return (CompressedDataPacket {
+				algorithm = ZLIB,
+				message = runGet (get :: Get Message) (Zlib.decompress message)
+			})
+		3 ->
+			return (CompressedDataPacket {
+				algorithm = BZip2,
+				message = runGet (get :: Get Message) (BZip2.decompress message)
+			})
+-- LiteralDataPacket, http://tools.ietf.org/html/rfc4880#section-5.9
+parse_packet 11 = do
+	format <- get
+	filenameLength <- get :: Get Word8
+	filename <- getLazyByteString (fromIntegral filenameLength)
+	timestamp <- get
+	content <- getRemainingLazyByteString
+	return (LiteralDataPacket {
+		format = format,
+		filename = LZ.toString filename,
+		timestamp = timestamp,
+		content = content
+	})
 -- UserIDPacket, http://tools.ietf.org/html/rfc4880#section-5.11
 parse_packet 13 = do
 	text <- getRemainingLazyByteString
