@@ -8,9 +8,19 @@ import qualified Codec.Compression.Zlib.Raw as Zip
 import qualified Codec.Compression.Zlib as Zlib
 import qualified Codec.Compression.BZip as BZip2
 
-newtype Message = Message [Packet] deriving Show
+import qualified BaseConvert as BaseConvert
+
+newtype Message = Message [Packet] deriving (Show, Read, Eq)
 
 data Packet =
+	OnePassSignaturePacket {
+		version::Word8,
+		signature_type::Word8,
+		hash_algorithm::HashAlgorithm,
+		key_algorithm::KeyAlgorithm,
+		key_id::String,
+		nested::Word8
+	} |
 	CompressedDataPacket {
 		algorithm::CompressionAlgorithm,
 		message::Message
@@ -22,9 +32,30 @@ data Packet =
 		content::LZ.ByteString
 	} |
 	UserIDPacket String
-	deriving Show
+	deriving (Show, Read, Eq)
 
-data CompressionAlgorithm = Uncompressed | ZIP | ZLIB | BZip2 deriving Show
+data HashAlgorithm = MD5 | SHA1 | RIPEMD160 | SHA256 | SHA384 | SHA512 | SHA224 deriving (Show, Read, Eq)
+data KeyAlgorithm = RSA | ELGAMAL | DSA | ECC | ECDSA | DH deriving (Show, Read, Eq)
+data CompressionAlgorithm = Uncompressed | ZIP | ZLIB | BZip2 deriving (Show, Read, Eq)
+
+hash_algorithms :: (Num a) => a -> HashAlgorithm
+hash_algorithms  1 = MD5
+hash_algorithms  2 = SHA1
+hash_algorithms  3 = RIPEMD160
+hash_algorithms  8 = SHA256
+hash_algorithms  9 = SHA384
+hash_algorithms 10 = SHA512
+hash_algorithms 11 = SHA224
+
+key_algorithms :: (Num a) => a -> KeyAlgorithm
+key_algorithms  1 = RSA
+key_algorithms  2 = RSA
+key_algorithms  3 = RSA
+key_algorithms 16 = ELGAMAL
+key_algorithms 17 = DSA
+key_algorithms 18 = ECC
+key_algorithms 19 = ECDSA
+key_algorithms 21 = DH
 
 -- A message is encoded as a list that takes the entire file
 instance Binary Message where
@@ -94,6 +125,22 @@ parse_old_length tag =
 			return (fromIntegral len)
 
 parse_packet :: Word8 -> Get Packet
+-- OnePassSignaturePacket, http://tools.ietf.org/html/rfc4880#section-5.4
+parse_packet  4 = do
+	version <- get
+	signature_type <- get
+	hash_algo <- get :: Get Word8
+	key_algo <- get :: Get Word8
+	key_id <- get :: Get Word64
+	nested <- get
+	return (OnePassSignaturePacket {
+		version = version,
+		signature_type = signature_type,
+		hash_algorithm = (hash_algorithms hash_algo),
+		key_algorithm = (key_algorithms key_algo),
+		key_id = (BaseConvert.toString 16 key_id),
+		nested = nested
+	})
 -- CompressedDataPacket, http://tools.ietf.org/html/rfc4880#section-5.6
 parse_packet  8 = do
 	algorithm <- get :: Get Word8
