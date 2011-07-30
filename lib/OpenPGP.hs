@@ -1,3 +1,5 @@
+module OpenPGP (Message(..), Packet(..), HashAlgorithm, KeyAlgorithm, CompressionAlgorithm) where
+
 import Data.Binary
 import Data.Binary.Get
 import Data.Bits
