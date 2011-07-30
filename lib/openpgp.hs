@@ -2,9 +2,11 @@ import Data.Binary
 import Data.Binary.Get
 import Data.Bits
 import Data.Word
+import qualified Data.ByteString.Lazy as LZ
+import qualified Data.ByteString.Lazy.UTF8 as LZ
 
 newtype Message = Message [Packet] deriving Show
-data Packet = EmptyPacket | Len Word8 Word32 deriving Show
+data Packet = EmptyPacket | Len Word8 Word32 | UserIDPacket String deriving Show
 
 -- A message is encoded as a list that takes the entire file
 instance Binary Message where
@@ -26,11 +28,16 @@ instance Binary Packet where
 		tag <- get :: Get Word8
 		if (tag .&. 64) /= 0 then do
 			len <- parse_new_length
-			return (Len (tag .&. 63) len)
+			let l = fromIntegral len in do
+				-- This forces the whole packet to be consumed
+				packet <- getLazyByteString l
+				return $ runGet (parse_packet (tag .&. 63)) packet
 		else do
 			len <- parse_old_length tag
-			let l = fromIntegral len in
-				return (Len ((tag `shiftR` 2) .&. 15) l)
+			let l = fromIntegral len in do
+				-- This forces the whole packet to be consumed
+				packet <- getLazyByteString l
+				return $ runGet (parse_packet ((tag `shiftR` 2) .&. 15)) packet
 
 -- http://tools.ietf.org/html/rfc4880#section-4.2.2
 parse_new_length :: Get Word32
@@ -67,3 +74,10 @@ parse_old_length tag =
 		3 -> do
 			len <- remaining
 			return (fromIntegral len)
+
+parse_packet :: Word8 -> Get Packet
+-- UserIDPacket, http://tools.ietf.org/html/rfc4880#section-5.11
+parse_packet 13 = do
+	text <- getRemainingLazyByteString
+	return (UserIDPacket (LZ.toString text))
+parse_packet _ = fail "Unimplemented OpenPGP packet tag"
