@@ -1,0 +1,5 @@
+OpenPGP-Haskell
+
+This is an OpenPGP library inspired by my work on OpenPGP-PHP <http://github.com/bendiken/openpgp-php>.
+
+It defines types Message and Packet to represent OpenPGP Messages as series of OpenPGP packets and then defines instances of Binary for each to facilitate encoding/decoding.
