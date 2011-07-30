@@ -6,6 +6,21 @@ import Data.Word
 newtype Message = Message [Packet] deriving Show
 data Packet = EmptyPacket | Len Word8 Word32 deriving Show
 
+-- A message is encoded as a list that takes the entire file
+instance Binary Message where
+	put (Message []) = return ()
+	put (Message (x:xs)) = do
+		put x
+		put (Message xs)
+	get = do
+		done <- isEmpty
+		if done then do
+			return (Message [])
+		else do
+			next_packet <- get :: Get Packet
+			(Message tail) <- get :: Get Message
+			return (Message (next_packet:tail))
+
 instance Binary Packet where
 	get = do
 		tag <- get :: Get Word8
