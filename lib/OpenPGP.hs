@@ -1,16 +1,19 @@
-module OpenPGP (Message(..), Packet(..), HashAlgorithm, KeyAlgorithm, CompressionAlgorithm) where
+module OpenPGP (Message(..), Packet(..), HashAlgorithm, KeyAlgorithm, CompressionAlgorithm, fingerprint) where
 
 import Data.Binary
 import Data.Binary.Get
 import Data.Bits
 import Data.Word
-import Data.Map (Map)
+import Data.Map (Map, (!))
 import qualified Data.Map as Map
 import qualified Data.ByteString.Lazy as LZ
 import qualified Data.ByteString.Lazy.UTF8 as LZ (toString)
+
 import qualified Codec.Compression.Zlib.Raw as Zip
 import qualified Codec.Compression.Zlib as Zlib
 import qualified Codec.Compression.BZip as BZip2
+import qualified Data.Digest.MD5 as MD5
+import qualified Data.Digest.SHA1 as SHA1
 
 import qualified BaseConvert as BaseConvert
 
@@ -160,6 +163,38 @@ parse_old_length tag =
 		2 -> get
 		-- Indeterminate length
 		3 -> fmap fromIntegral remaining
+
+public_key_fields :: KeyAlgorithm -> [Char]
+public_key_fields RSA     = ['n', 'e']
+public_key_fields RSA_E   = public_key_fields RSA
+public_key_fields RSA_S   = public_key_fields RSA
+public_key_fields ELGAMAL = ['p', 'g', 'y']
+public_key_fields DSA     = ['p', 'q', 'g', 'y']
+
+-- Helper method for fingerprints and such
+fingerprint_material :: Packet -> [LZ.ByteString]
+fingerprint_material (PublicKeyPacket {version = 4,
+                      timestamp = timestamp,
+                      public_key_algorithm = algorithm,
+                      key = key}) =
+	[
+		LZ.singleton 0x99,
+		encode (6 + fromIntegral (LZ.length material) :: Word16),
+		LZ.singleton 4, encode timestamp, encode algorithm,
+		material
+	]
+	where material = LZ.concat $ map (\f -> encode (key ! f)) (public_key_fields algorithm)
+fingerprint_material p | version p == 2 || version p == 3 =
+	[n, e]
+	where n = LZ.drop 2 (encode (key p ! 'n'))
+	      e = LZ.drop 2 (encode (key p ! 'e'))
+
+-- http://tools.ietf.org/html/rfc4880#section-12.2
+fingerprint :: Packet -> String
+fingerprint p | version p == 4 =
+	BaseConvert.toString 16 $ SHA1.toInteger $ SHA1.hash $ LZ.unpack (LZ.concat (fingerprint_material p))
+fingerprint p | version p == 2 || version p == 3 =
+	concat $ map (BaseConvert.toString 16) (MD5.hash $ LZ.unpack (LZ.concat (fingerprint_material p)))
 
 parse_packet :: Word8 -> Get Packet
 -- OnePassSignaturePacket, http://tools.ietf.org/html/rfc4880#section-5.4
