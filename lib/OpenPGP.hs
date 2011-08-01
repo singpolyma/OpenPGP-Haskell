@@ -78,53 +78,43 @@ instance Binary Packet where
 	get = do
 		tag <- get :: Get Word8
 		if (tag .&. 64) /= 0 then do
-			len <- parse_new_length
-			let l = fromIntegral len in do
-				-- This forces the whole packet to be consumed
-				packet <- getLazyByteString l
-				return $ runGet (parse_packet (tag .&. 63)) packet
+			len <- fmap fromIntegral parse_new_length
+			-- This forces the whole packet to be consumed
+			packet <- getLazyByteString len
+			return $ runGet (parse_packet (tag .&. 63)) packet
 		else do
-			len <- parse_old_length tag
-			let l = fromIntegral len in do
-				-- This forces the whole packet to be consumed
-				packet <- getLazyByteString l
-				return $ runGet (parse_packet ((tag `shiftR` 2) .&. 15)) packet
+			len <- fmap fromIntegral (parse_old_length tag)
+			-- This forces the whole packet to be consumed
+			packet <- getLazyByteString len
+			return $ runGet (parse_packet ((tag `shiftR` 2) .&. 15)) packet
 
 -- http://tools.ietf.org/html/rfc4880#section-4.2.2
 parse_new_length :: Get Word32
 parse_new_length = do
-	len <- get :: Get Word8
-	let l = fromIntegral len in
-		case len of
-			-- One octet length
-			_ | len < 192 -> return l
-			-- Two octet length
-			_ | len > 191 && len < 224 -> do
-				second <- get :: Get Word8
-				let s = fromIntegral second in
-					return $ ((l - 192) `shiftL` 8) + s + 192
-			-- Five octet length
-			_ | len == 255 -> get :: Get Word32
-			-- TODO: Partial body lengths. 1 << (len & 0x1F)
+	len <- fmap fromIntegral (get :: Get Word8)
+	case len of
+		-- One octet length
+		_ | len < 192 -> return len
+		-- Two octet length
+		_ | len > 191 && len < 224 -> do
+			second <- fmap fromIntegral (get :: Get Word8)
+			return $ ((len - 192) `shiftL` 8) + second + 192
+		-- Five octet length
+		_ | len == 255 -> get :: Get Word32
+		-- TODO: Partial body lengths. 1 << (len & 0x1F)
 
 -- http://tools.ietf.org/html/rfc4880#section-4.2.1
 parse_old_length :: Word8 -> Get Word32
 parse_old_length tag =
 	case (tag .&. 3) of
 		-- One octet length
-		0 -> do
-			len <- get :: Get Word8
-			return (fromIntegral len)
+		0 -> fmap fromIntegral (get :: Get Word8)
 		-- Two octet length
-		1 -> do
-			len <- get :: Get Word16
-			return (fromIntegral len)
+		1 -> fmap fromIntegral (get :: Get Word16)
 		-- Four octet length
-		2 -> get :: Get Word32
+		2 -> get
 		-- Indeterminate length
-		3 -> do
-			len <- remaining
-			return (fromIntegral len)
+		3 -> fmap fromIntegral remaining
 
 parse_packet :: Word8 -> Get Packet
 -- OnePassSignaturePacket, http://tools.ietf.org/html/rfc4880#section-5.4
@@ -182,7 +172,6 @@ parse_packet 11 = do
 		content = content
 	})
 -- UserIDPacket, http://tools.ietf.org/html/rfc4880#section-5.11
-parse_packet 13 = do
-	text <- getRemainingLazyByteString
-	return (UserIDPacket (LZ.toString text))
+parse_packet 13 =
+	fmap UserIDPacket (fmap LZ.toString getRemainingLazyByteString)
 parse_packet _ = fail "Unimplemented OpenPGP packet tag"
