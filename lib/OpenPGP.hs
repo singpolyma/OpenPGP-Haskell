@@ -4,8 +4,10 @@ import Data.Binary
 import Data.Binary.Get
 import Data.Bits
 import Data.Word
+import Data.Map (Map)
+import qualified Data.Map as Map
 import qualified Data.ByteString.Lazy as LZ
-import qualified Data.ByteString.Lazy.UTF8 as LZ
+import qualified Data.ByteString.Lazy.UTF8 as LZ (toString)
 import qualified Codec.Compression.Zlib.Raw as Zip
 import qualified Codec.Compression.Zlib as Zlib
 import qualified Codec.Compression.BZip as BZip2
@@ -13,6 +15,7 @@ import qualified Codec.Compression.BZip as BZip2
 import qualified BaseConvert as BaseConvert
 
 newtype Message = Message [Packet] deriving (Show, Read, Eq)
+newtype MPI = MPI Integer deriving (Show, Read, Eq, Ord)
 
 data Packet =
 	OnePassSignaturePacket {
@@ -23,8 +26,14 @@ data Packet =
 		key_id::String,
 		nested::Word8
 	} |
+	PublicKeyPacket {
+		version::Word8,
+		timestamp::Word32,
+		public_key_algorithm::KeyAlgorithm,
+		key::Map Char MPI
+	} |
 	CompressedDataPacket {
-		algorithm::CompressionAlgorithm,
+		compressed_data_algorithm::CompressionAlgorithm,
 		message::Message
 	} |
 	LiteralDataPacket {
@@ -59,6 +68,11 @@ key_algorithms 18 = ECC
 key_algorithms 19 = ECDSA
 key_algorithms 21 = DH
 
+public_key_fields :: KeyAlgorithm -> [Char]
+public_key_fields RSA     = ['n', 'e']
+public_key_fields ELGAMAL = ['p', 'g', 'y']
+public_key_fields DSA     = ['p', 'q', 'g', 'y']
+
 -- A message is encoded as a list that takes the entire file
 instance Binary Message where
 	put (Message []) = return ()
@@ -73,6 +87,18 @@ instance Binary Message where
 			next_packet <- get :: Get Packet
 			(Message tail) <- get :: Get Message
 			return (Message (next_packet:tail))
+
+instance Binary MPI where
+	put (MPI i) = do
+		put ((((fromIntegral (LZ.length bytes)) - 1) * 8) + (floor (logBase 2 (fromIntegral (bytes `LZ.index` 1)))) + 1 :: Word16)
+		mapM (\x -> putWord8 x) (LZ.unpack bytes)
+		put ()
+		where bytes = LZ.unfoldr (\x -> if x == 0 then Nothing else Just (fromIntegral x, x `shiftR` 8)) i
+	get = do
+		length <- fmap fromIntegral (get :: Get Word16)
+		bytes <- getLazyByteString (floor ((length + 7) / 8))
+		return (MPI (LZ.foldr (\b a ->
+			a `shiftL` 8 .|. fromIntegral b) 0 bytes))
 
 instance Binary Packet where
 	get = do
@@ -133,6 +159,22 @@ parse_packet  4 = do
 		key_id = (BaseConvert.toString 16 key_id),
 		nested = nested
 	})
+-- PublicKeyPacket, http://tools.ietf.org/html/rfc4880#section-5.5.2
+parse_packet  6 = do
+	version <- get :: Get Word8
+	case version of
+		4 -> do
+			timestamp <- get
+			algorithm <- fmap key_algorithms (get :: Get Word8)
+			key <- mapM (\f -> do
+				mpi <- get :: Get MPI
+				return (f, mpi)) (public_key_fields algorithm)
+			return (PublicKeyPacket {
+				version = 4,
+				timestamp = timestamp,
+				public_key_algorithm = algorithm,
+				key = Map.fromList key
+			})
 -- CompressedDataPacket, http://tools.ietf.org/html/rfc4880#section-5.6
 parse_packet  8 = do
 	algorithm <- get :: Get Word8
@@ -140,22 +182,22 @@ parse_packet  8 = do
 	case algorithm of
 		0 ->
 			return (CompressedDataPacket {
-				algorithm = Uncompressed,
+				compressed_data_algorithm = Uncompressed,
 				message = runGet (get :: Get Message) message
 			})
 		1 ->
 			return (CompressedDataPacket {
-				algorithm = ZIP,
+				compressed_data_algorithm = ZIP,
 				message = runGet (get :: Get Message) (Zip.decompress message)
 			})
 		2 ->
 			return (CompressedDataPacket {
-				algorithm = ZLIB,
+				compressed_data_algorithm = ZLIB,
 				message = runGet (get :: Get Message) (Zlib.decompress message)
 			})
 		3 ->
 			return (CompressedDataPacket {
-				algorithm = BZip2,
+				compressed_data_algorithm = BZip2,
 				message = runGet (get :: Get Message) (BZip2.decompress message)
 			})
 -- LiteralDataPacket, http://tools.ietf.org/html/rfc4880#section-5.9
