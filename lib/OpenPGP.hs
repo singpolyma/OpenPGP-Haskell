@@ -14,9 +14,6 @@ import qualified Codec.Compression.BZip as BZip2
 
 import qualified BaseConvert as BaseConvert
 
-newtype Message = Message [Packet] deriving (Show, Read, Eq)
-newtype MPI = MPI Integer deriving (Show, Read, Eq, Ord)
-
 data Packet =
 	OnePassSignaturePacket {
 		version::Word8,
@@ -45,35 +42,56 @@ data Packet =
 	UserIDPacket String
 	deriving (Show, Read, Eq)
 
-data HashAlgorithm = MD5 | SHA1 | RIPEMD160 | SHA256 | SHA384 | SHA512 | SHA224 deriving (Show, Read, Eq)
-data KeyAlgorithm = RSA | ELGAMAL | DSA | ECC | ECDSA | DH deriving (Show, Read, Eq)
-data CompressionAlgorithm = Uncompressed | ZIP | ZLIB | BZip2 deriving (Show, Read, Eq)
+data HashAlgorithm = MD5 | SHA1 | RIPEMD160 | SHA256 | SHA384 | SHA512 | SHA224
+	deriving (Show, Read, Eq)
+instance Binary HashAlgorithm where
+	get = do
+		tag <- get :: Get Word8
+		case tag of
+			01 -> return MD5
+			02 -> return SHA1
+			03 -> return RIPEMD160
+			08 -> return SHA256
+			09 -> return SHA384
+			10 -> return SHA512
+			11 -> return SHA224
 
-hash_algorithms :: (Num a) => a -> HashAlgorithm
-hash_algorithms  1 = MD5
-hash_algorithms  2 = SHA1
-hash_algorithms  3 = RIPEMD160
-hash_algorithms  8 = SHA256
-hash_algorithms  9 = SHA384
-hash_algorithms 10 = SHA512
-hash_algorithms 11 = SHA224
+data KeyAlgorithm = RSA | RSA_E | RSA_S | ELGAMAL | DSA | ECC | ECDSA | DH
+	deriving (Show, Read, Eq)
+instance Binary KeyAlgorithm where
+	put RSA     = put (01 :: Word8)
+	put RSA_E   = put (02 :: Word8)
+	put RSA_S   = put (03 :: Word8)
+	put ELGAMAL = put (16 :: Word8)
+	put DSA     = put (17 :: Word8)
+	put ECC     = put (18 :: Word8)
+	put ECDSA   = put (19 :: Word8)
+	put DH      = put (21 :: Word8)
+	get = do
+		tag <- get :: Get Word8
+		case tag of
+			01 -> return RSA
+			02 -> return RSA_E
+			03 -> return RSA_S
+			16 -> return ELGAMAL
+			17 -> return DSA
+			18 -> return ECC
+			19 -> return ECDSA
+			21 -> return DH
 
-key_algorithms :: (Num a) => a -> KeyAlgorithm
-key_algorithms  1 = RSA
-key_algorithms  2 = RSA
-key_algorithms  3 = RSA
-key_algorithms 16 = ELGAMAL
-key_algorithms 17 = DSA
-key_algorithms 18 = ECC
-key_algorithms 19 = ECDSA
-key_algorithms 21 = DH
-
-public_key_fields :: KeyAlgorithm -> [Char]
-public_key_fields RSA     = ['n', 'e']
-public_key_fields ELGAMAL = ['p', 'g', 'y']
-public_key_fields DSA     = ['p', 'q', 'g', 'y']
+data CompressionAlgorithm = Uncompressed | ZIP | ZLIB | BZip2
+	deriving (Show, Read, Eq)
+instance Binary CompressionAlgorithm where
+	get = do
+		tag <- get :: Get Word8
+		case tag of
+			0 -> return Uncompressed
+			1 -> return ZIP
+			2 -> return ZLIB
+			3 -> return BZip2
 
 -- A message is encoded as a list that takes the entire file
+newtype Message = Message [Packet] deriving (Show, Read, Eq)
 instance Binary Message where
 	put (Message []) = return ()
 	put (Message (x:xs)) = do
@@ -88,6 +106,7 @@ instance Binary Message where
 			(Message tail) <- get :: Get Message
 			return (Message (next_packet:tail))
 
+newtype MPI = MPI Integer deriving (Show, Read, Eq, Ord)
 instance Binary MPI where
 	put (MPI i) = do
 		put ((((fromIntegral (LZ.length bytes)) - 1) * 8) + (floor (logBase 2 (fromIntegral (bytes `LZ.index` 1)))) + 1 :: Word16)
@@ -147,15 +166,15 @@ parse_packet :: Word8 -> Get Packet
 parse_packet  4 = do
 	version <- get
 	signature_type <- get
-	hash_algo <- get :: Get Word8
-	key_algo <- get :: Get Word8
+	hash_algo <- get
+	key_algo <- get
 	key_id <- get :: Get Word64
 	nested <- get
 	return (OnePassSignaturePacket {
 		version = version,
 		signature_type = signature_type,
-		hash_algorithm = (hash_algorithms hash_algo),
-		key_algorithm = (key_algorithms key_algo),
+		hash_algorithm = hash_algo,
+		key_algorithm = key_algo,
 		key_id = (BaseConvert.toString 16 key_id),
 		nested = nested
 	})
@@ -165,7 +184,7 @@ parse_packet  6 = do
 	case version of
 		4 -> do
 			timestamp <- get
-			algorithm <- fmap key_algorithms (get :: Get Word8)
+			algorithm <- get
 			key <- mapM (\f -> do
 				mpi <- get :: Get MPI
 				return (f, mpi)) (public_key_fields algorithm)
@@ -177,27 +196,27 @@ parse_packet  6 = do
 			})
 -- CompressedDataPacket, http://tools.ietf.org/html/rfc4880#section-5.6
 parse_packet  8 = do
-	algorithm <- get :: Get Word8
+	algorithm <- get
 	message <- getRemainingLazyByteString
 	case algorithm of
-		0 ->
+		Uncompressed ->
 			return (CompressedDataPacket {
-				compressed_data_algorithm = Uncompressed,
+				compressed_data_algorithm = algorithm,
 				message = runGet (get :: Get Message) message
 			})
-		1 ->
+		ZIP ->
 			return (CompressedDataPacket {
-				compressed_data_algorithm = ZIP,
+				compressed_data_algorithm = algorithm,
 				message = runGet (get :: Get Message) (Zip.decompress message)
 			})
-		2 ->
+		ZLIB ->
 			return (CompressedDataPacket {
-				compressed_data_algorithm = ZLIB,
+				compressed_data_algorithm = algorithm,
 				message = runGet (get :: Get Message) (Zlib.decompress message)
 			})
-		3 ->
+		BZip2 ->
 			return (CompressedDataPacket {
-				compressed_data_algorithm = BZip2,
+				compressed_data_algorithm = algorithm,
 				message = runGet (get :: Get Message) (BZip2.decompress message)
 			})
 -- LiteralDataPacket, http://tools.ietf.org/html/rfc4880#section-5.9
