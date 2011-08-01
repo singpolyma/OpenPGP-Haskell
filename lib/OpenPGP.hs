@@ -109,7 +109,7 @@ instance Binary Message where
 newtype MPI = MPI Integer deriving (Show, Read, Eq, Ord)
 instance Binary MPI where
 	put (MPI i) = do
-		put ((((fromIntegral (LZ.length bytes)) - 1) * 8) + (floor (logBase 2 (fromIntegral (bytes `LZ.index` 1)))) + 1 :: Word16)
+		put ((((fromIntegral (LZ.length bytes)) - 1) * 8) + (floor (logBase 2 (fromIntegral (bytes `LZ.index` 0)))) + 1 :: Word16)
 		mapM (\x -> putWord8 x) (LZ.unpack bytes)
 		put ()
 		where bytes = LZ.unfoldr (\x -> if x == 0 then Nothing else Just (fromIntegral x, x `shiftR` 8)) i
