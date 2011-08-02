@@ -112,10 +112,12 @@ instance Binary Message where
 newtype MPI = MPI Integer deriving (Show, Read, Eq, Ord)
 instance Binary MPI where
 	put (MPI i) = do
-		put ((((fromIntegral (LZ.length bytes)) - 1) * 8) + (floor (logBase 2 (fromIntegral (bytes `LZ.index` 0)))) + 1 :: Word16)
-		mapM (\x -> putWord8 x) (LZ.unpack bytes)
-		put ()
-		where bytes = LZ.unfoldr (\x -> if x == 0 then Nothing else Just (fromIntegral x, x `shiftR` 8)) i
+		put (((fromIntegral . LZ.length $ bytes) - 1) * 8
+			+ floor (logBase 2 $ fromIntegral (bytes `LZ.index` 0))
+			+ 1 :: Word16)
+		mapM_ (\x -> putWord8 x) (LZ.unpack bytes)
+		where bytes = LZ.unfoldr (\x -> if x == 0 then Nothing
+			else Just (fromIntegral x, x `shiftR` 8)) i
 	get = do
 		length <- fmap fromIntegral (get :: Get Word16)
 		bytes <- getLazyByteString (floor ((length + 7) / 8))
@@ -164,6 +166,7 @@ parse_old_length tag =
 		-- Indeterminate length
 		3 -> fmap fromIntegral remaining
 
+-- http://tools.ietf.org/html/rfc4880#section-5.5.2
 public_key_fields :: KeyAlgorithm -> [Char]
 public_key_fields RSA     = ['n', 'e']
 public_key_fields RSA_E   = public_key_fields RSA
@@ -183,18 +186,20 @@ fingerprint_material (PublicKeyPacket {version = 4,
 		LZ.singleton 4, encode timestamp, encode algorithm,
 		material
 	]
-	where material = LZ.concat $ map (\f -> encode (key ! f)) (public_key_fields algorithm)
-fingerprint_material p | version p == 2 || version p == 3 =
-	[n, e]
+	where material = LZ.concat $
+		map (\f -> encode (key ! f)) (public_key_fields algorithm)
+fingerprint_material p | version p == 2 || version p == 3 = [n, e]
 	where n = LZ.drop 2 (encode (key p ! 'n'))
 	      e = LZ.drop 2 (encode (key p ! 'e'))
 
 -- http://tools.ietf.org/html/rfc4880#section-12.2
 fingerprint :: Packet -> String
 fingerprint p | version p == 4 =
-	BaseConvert.toString 16 $ SHA1.toInteger $ SHA1.hash $ LZ.unpack (LZ.concat (fingerprint_material p))
+	BaseConvert.toString 16 $ SHA1.toInteger $ SHA1.hash $
+		LZ.unpack (LZ.concat (fingerprint_material p))
 fingerprint p | version p == 2 || version p == 3 =
-	concat $ map (BaseConvert.toString 16) (MD5.hash $ LZ.unpack (LZ.concat (fingerprint_material p)))
+	concat $ map (BaseConvert.toString 16) $
+		MD5.hash $ LZ.unpack (LZ.concat (fingerprint_material p))
 
 parse_packet :: Word8 -> Get Packet
 -- OnePassSignaturePacket, http://tools.ietf.org/html/rfc4880#section-5.4
@@ -233,27 +238,16 @@ parse_packet  6 = do
 parse_packet  8 = do
 	algorithm <- get
 	message <- getRemainingLazyByteString
-	case algorithm of
-		Uncompressed ->
-			return (CompressedDataPacket {
-				compressed_data_algorithm = algorithm,
-				message = runGet (get :: Get Message) message
-			})
-		ZIP ->
-			return (CompressedDataPacket {
-				compressed_data_algorithm = algorithm,
-				message = runGet (get :: Get Message) (Zip.decompress message)
-			})
-		ZLIB ->
-			return (CompressedDataPacket {
-				compressed_data_algorithm = algorithm,
-				message = runGet (get :: Get Message) (Zlib.decompress message)
-			})
-		BZip2 ->
-			return (CompressedDataPacket {
-				compressed_data_algorithm = algorithm,
-				message = runGet (get :: Get Message) (BZip2.decompress message)
-			})
+	let decompress = case algorithm of
+		Uncompressed -> id
+		ZIP -> Zip.decompress
+		ZLIB -> Zlib.decompress
+		BZip2 -> BZip2.decompress
+		in
+		return (CompressedDataPacket {
+			compressed_data_algorithm = algorithm,
+			message = runGet (get :: Get Message) (decompress message)
+		})
 -- LiteralDataPacket, http://tools.ietf.org/html/rfc4880#section-5.9
 parse_packet 11 = do
 	format <- get
@@ -270,4 +264,5 @@ parse_packet 11 = do
 -- UserIDPacket, http://tools.ietf.org/html/rfc4880#section-5.11
 parse_packet 13 =
 	fmap UserIDPacket (fmap LZ.toString getRemainingLazyByteString)
+-- Fail nicely for unimplemented packets
 parse_packet _ = fail "Unimplemented OpenPGP packet tag"
