@@ -125,16 +125,16 @@ instance Binary MPI where
 instance Binary Packet where
 	get = do
 		tag <- get :: Get Word8
-		if (tag .&. 64) /= 0 then do
-			len <- fmap fromIntegral parse_new_length
+		let (t, l) =
+			if (tag .&. 64) /= 0 then
+				(tag .&. 63, parse_new_length)
+			else
+				((tag `shiftR` 2) .&. 15, parse_old_length tag)
+			in do
+			len <- l
 			-- This forces the whole packet to be consumed
-			packet <- getLazyByteString len
-			return $ runGet (parse_packet (tag .&. 63)) packet
-		else do
-			len <- fmap fromIntegral (parse_old_length tag)
-			-- This forces the whole packet to be consumed
-			packet <- getLazyByteString len
-			return $ runGet (parse_packet ((tag `shiftR` 2) .&. 15)) packet
+			packet <- getLazyByteString (fromIntegral len)
+			return $ runGet (parse_packet t) packet
 
 -- http://tools.ietf.org/html/rfc4880#section-4.2.2
 parse_new_length :: Get Word32
