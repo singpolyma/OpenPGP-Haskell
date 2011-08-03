@@ -1,5 +1,6 @@
 module OpenPGP (Message(..), Packet(..), HashAlgorithm, KeyAlgorithm, CompressionAlgorithm, fingerprint) where
 
+import Control.Monad
 import Data.Binary
 import Data.Binary.Get
 import Data.Bits
@@ -31,6 +32,20 @@ data Packet =
 		timestamp::Word32,
 		public_key_algorithm::KeyAlgorithm,
 		key::Map Char MPI
+	} |
+	SecretKeyPacket {
+		version::Word8,
+		timestamp::Word32,
+		public_key_algorithm::KeyAlgorithm,
+		key::Map Char MPI,
+		s2k_useage::Word8,
+		symmetric_type::Word8,
+		s2k_type::Word8,
+		s2k_hash_algorithm::HashAlgorithm,
+		s2k_salt::Word64,
+		s2k_count::Word8,
+		encrypted_data::LZ.ByteString,
+		private_hash::LZ.ByteString
 	} |
 	CompressedDataPacket {
 		compressed_data_algorithm::CompressionAlgorithm,
@@ -174,6 +189,14 @@ public_key_fields RSA_S   = public_key_fields RSA
 public_key_fields ELGAMAL = ['p', 'g', 'y']
 public_key_fields DSA     = ['p', 'q', 'g', 'y']
 
+-- http://tools.ietf.org/html/rfc4880#section-5.5.3
+secret_key_fields :: KeyAlgorithm -> [Char]
+secret_key_fields RSA     = ['d', 'p', 'q', 'u']
+secret_key_fields RSA_E   = public_key_fields RSA
+secret_key_fields RSA_S   = public_key_fields RSA
+secret_key_fields ELGAMAL = ['x']
+secret_key_fields DSA     = ['x']
+
 -- Helper method for fingerprints and such
 fingerprint_material :: Packet -> [LZ.ByteString]
 fingerprint_material (PublicKeyPacket {version = 4,
@@ -218,6 +241,46 @@ parse_packet  4 = do
 		key_id = (BaseConvert.toString 16 key_id),
 		nested = nested
 	})
+-- SecretKeyPacket, http://tools.ietf.org/html/rfc4880#section-5.5.3
+parse_packet  5 = do
+	-- Parse PublicKey part
+	(PublicKeyPacket {
+		version = version,
+		timestamp = timestamp,
+		public_key_algorithm = algorithm,
+		key = key
+	}) <- parse_packet 6
+	s2k_useage <- get :: Get Word8
+	let k = SecretKeyPacket version timestamp algorithm key s2k_useage
+		in do
+		k' <- case s2k_useage of
+			_ | s2k_useage == 255 || s2k_useage == 254 -> do
+				symmetric_type <- get
+				s2k_type <- get
+				s2k_hash_algorithm <- get
+				s2k_salt <- if s2k_type == 1 || s2k_type == 3 then get
+					else return undefined
+				s2k_count <- if s2k_type == 3 then do
+					c <- fmap fromIntegral (get :: Get Word8)
+					return $ fromIntegral $
+						(16 + (c .&. 15)) `shiftL` ((c `shiftR` 4) + 6)
+					else return undefined
+				return (k symmetric_type s2k_type s2k_hash_algorithm
+					s2k_salt s2k_count)
+			_ | s2k_useage > 0 ->
+				-- s2k_useage is symmetric_type in this case
+				return (k s2k_useage undefined undefined undefined undefined)
+			_ ->
+				return (k undefined undefined undefined undefined undefined)
+		if s2k_useage > 0 then do
+			encrypted <- getRemainingLazyByteString
+			return (k' encrypted undefined)
+		else do
+			key <- foldM (\m f -> do
+				mpi <- get :: Get MPI
+				return $ Map.insert f mpi m) key (secret_key_fields algorithm)
+			private_hash <- getRemainingLazyByteString
+			return ((k' undefined private_hash) {key = key})
 -- PublicKeyPacket, http://tools.ietf.org/html/rfc4880#section-5.5.2
 parse_packet  6 = do
 	version <- get :: Get Word8
