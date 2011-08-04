@@ -192,8 +192,8 @@ public_key_fields DSA     = ['p', 'q', 'g', 'y']
 -- http://tools.ietf.org/html/rfc4880#section-5.5.3
 secret_key_fields :: KeyAlgorithm -> [Char]
 secret_key_fields RSA     = ['d', 'p', 'q', 'u']
-secret_key_fields RSA_E   = public_key_fields RSA
-secret_key_fields RSA_S   = public_key_fields RSA
+secret_key_fields RSA_E   = secret_key_fields RSA
+secret_key_fields RSA_S   = secret_key_fields RSA
 secret_key_fields ELGAMAL = ['x']
 secret_key_fields DSA     = ['x']
 
