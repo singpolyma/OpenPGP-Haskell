@@ -1,4 +1,4 @@
-module OpenPGP (Message(..), Packet(..), SignatureSubpacket(..), HashAlgorithm, KeyAlgorithm, CompressionAlgorithm, fingerprint) where
+module OpenPGP (Message(..), Packet(..), SignatureSubpacket(..), HashAlgorithm, KeyAlgorithm, CompressionAlgorithm, MPI, fingerprint, signatures_and_data, signature_issuer) where
 
 import Control.Monad
 import Data.Binary
@@ -352,6 +352,16 @@ instance Binary Message where
 			(Message tail) <- get :: Get Message
 			return (Message (next_packet:tail))
 
+signatures_and_data :: Message -> ([Packet], [Packet])
+signatures_and_data (Message ((CompressedDataPacket {message = m}):_)) =
+	signatures_and_data m
+signatures_and_data (Message lst) =
+	(filter isSig lst, filter isDta lst)
+	where isSig (SignaturePacket {}) = True
+	      isSig _ = False
+	      isDta (LiteralDataPacket {}) = True
+	      isDta _ = False
+
 newtype MPI = MPI Integer deriving (Show, Read, Eq, Ord)
 instance Binary MPI where
 	put (MPI i) = do
@@ -387,6 +397,15 @@ instance Binary SignatureSubpacket where
 		-- This forces the whole packet to be consumed
 		packet <- getLazyByteString len
 		return $ runGet (parse_signature_subpacket tag) packet
+
+signature_issuer :: OpenPGP.Packet -> Maybe String
+signature_issuer (SignaturePacket {hashed_subpackets = hashed,
+                                   unhashed_subpackets = unhashed}) =
+	if (length issuers) > 0 then Just issuer else Nothing
+	where IssuerPacket issuer = issuers !! 0
+	      issuers = (filter isIssuer hashed) ++ (filter isIssuer unhashed)
+	      isIssuer (IssuerPacket {}) = True
+	      isIssuer _ = False
 
 get_signature_subpackets :: Get [SignatureSubpacket]
 get_signature_subpackets = do
