@@ -25,7 +25,8 @@ data Packet =
 		hashed_subpackets::[SignatureSubpacket],
 		unhashed_subpackets::[SignatureSubpacket],
 		hash_head::Word16,
-		signature::MPI
+		signature::MPI,
+		trailer::LZ.ByteString
 	} |
 	OnePassSignaturePacket {
 		version::Word8,
@@ -152,7 +153,8 @@ parse_packet  2 = do
 						hashed_subpackets = hashed,
 						unhashed_subpackets = unhashed,
 						hash_head = hash_head,
-						signature = signature
+						signature = signature,
+						trailer = LZ.concat [encode version, encode signature_type, encode key_algorithm, encode hash_algorithm, encode (fromIntegral hashed_size :: Word16), hashed_data, LZ.pack [4, 0xff], encode ((6 + (fromIntegral hashed_size)) :: Word32)]
 					})
 -- OnePassSignaturePacket, http://tools.ietf.org/html/rfc4880#section-5.4
 parse_packet  4 = do
