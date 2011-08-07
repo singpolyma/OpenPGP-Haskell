@@ -381,6 +381,13 @@ data SignatureSubpacket =
 	deriving (Show, Read, Eq)
 
 instance Binary SignatureSubpacket where
+	put p = do
+		-- Use 5-octet-length + 1 for tag as the first packet body octet
+		put (255 :: Word8)
+		put ((fromIntegral $ LZ.length body) + 1 :: Word32)
+		put tag
+		mapM_ putWord8 (LZ.unpack body)
+		where (body, tag) = put_signature_subpacket p
 	get = do
 		len <- fmap fromIntegral (get :: Get Word8)
 		len <- case len of
@@ -404,6 +411,12 @@ signature_issuer (SignaturePacket {hashed_subpackets = hashed,
 	      issuers = (filter isIssuer hashed) ++ (filter isIssuer unhashed)
 	      isIssuer (IssuerPacket {}) = True
 	      isIssuer _ = False
+
+put_signature_subpacket :: SignatureSubpacket -> (LZ.ByteString, Word8)
+put_signature_subpacket (SignatureCreationTimePacket time) =
+	(encode time, 2)
+put_signature_subpacket (IssuerPacket keyid) =
+	(encode ((BaseConvert.toNum 16 keyid) :: Word64), 16)
 
 get_signature_subpackets :: Get [SignatureSubpacket]
 get_signature_subpackets = do
