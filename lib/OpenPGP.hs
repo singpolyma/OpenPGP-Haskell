@@ -415,3 +415,6 @@ parse_signature_subpacket  2 = fmap SignatureCreationTimePacket get
 parse_signature_subpacket 16 = do
 	keyid <- get :: Get Word64
 	return $ IssuerPacket (BaseConvert.toString 16 keyid)
+-- Fail nicely for unimplemented packets
+parse_signature_subpacket _ =
+	fail "Unimplemented OpenPGP signature subpacket tag"
