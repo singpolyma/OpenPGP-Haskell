@@ -127,6 +127,35 @@ secret_key_fields RSA_S   = secret_key_fields RSA
 secret_key_fields ELGAMAL = ['x']
 secret_key_fields DSA     = ['x']
 
+-- Need this seperate for trailer calculation
+signature_packet_start :: Packet -> LZ.ByteString
+signature_packet_start (SignaturePacket {
+	version = 4,
+	signature_type = signature_type,
+	key_algorithm = key_algorithm,
+	hash_algorithm = hash_algorithm,
+	hashed_subpackets = hashed_subpackets
+}) =
+	LZ.concat $ [
+		encode (0x04 :: Word8),
+		encode signature_type,
+		encode key_algorithm,
+		encode hash_algorithm,
+		encode ((fromIntegral $ LZ.length hashed_subs) :: Word16),
+		hashed_subs
+	]
+	where hashed_subs = LZ.concat $ map encode hashed_subpackets
+
+-- The trailer is just the top of the body plus some crap
+calculate_signature_trailer :: Packet -> LZ.ByteString
+calculate_signature_trailer p =
+	LZ.concat [
+		signature_packet_start p,
+		encode (0x04 :: Word8),
+		encode (0xff :: Word8),
+		encode ((fromIntegral (LZ.length $ signature_packet_start p)) :: Word32)
+	]
+
 parse_packet :: Word8 -> Get Packet
 -- SignaturePacket, http://tools.ietf.org/html/rfc4880#section-5.2
 parse_packet  2 = do
