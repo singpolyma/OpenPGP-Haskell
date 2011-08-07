@@ -282,6 +282,13 @@ fingerprint_material p | version p == 2 || version p == 3 = [n, e]
 data HashAlgorithm = MD5 | SHA1 | RIPEMD160 | SHA256 | SHA384 | SHA512 | SHA224
 	deriving (Show, Read, Eq)
 instance Binary HashAlgorithm where
+	put MD5       = put (01 :: Word8)
+	put SHA1      = put (02 :: Word8)
+	put RIPEMD160 = put (03 :: Word8)
+	put SHA256    = put (08 :: Word8)
+	put SHA384    = put (09 :: Word8)
+	put SHA512    = put (10 :: Word8)
+	put SHA224    = put (11 :: Word8)
 	get = do
 		tag <- get :: Get Word8
 		case tag of
