@@ -1,8 +1,6 @@
-module OpenPGP (Message(..), Packet(..), SignatureSubpacket(..), HashAlgorithm, KeyAlgorithm, CompressionAlgorithm, MPI, fingerprint, signatures_and_data, signature_issuer) where
+module OpenPGP (Message(..), Packet(..), SignatureSubpacket(..), HashAlgorithm(..), KeyAlgorithm(..), CompressionAlgorithm(..), MPI(..), fingerprint_material, signatures_and_data, signature_issuer) where
 
 import Control.Monad
-import Data.Binary
-import Data.Binary.Get
 import Data.Bits
 import Data.Word
 import Data.Map (Map, (!))
@@ -10,11 +8,11 @@ import qualified Data.Map as Map
 import qualified Data.ByteString.Lazy as LZ
 import qualified Data.ByteString.Lazy.UTF8 as LZ (toString)
 
+import Data.Binary
+import Data.Binary.Get
 import qualified Codec.Compression.Zlib.Raw as Zip
 import qualified Codec.Compression.Zlib as Zlib
 import qualified Codec.Compression.BZip as BZip2
-import qualified Data.Digest.MD5 as MD5
-import qualified Data.Digest.SHA1 as SHA1
 
 import qualified BaseConvert as BaseConvert
 
@@ -278,15 +276,6 @@ fingerprint_material (PublicKeyPacket {version = 4,
 fingerprint_material p | version p == 2 || version p == 3 = [n, e]
 	where n = LZ.drop 2 (encode (key p ! 'n'))
 	      e = LZ.drop 2 (encode (key p ! 'e'))
-
--- http://tools.ietf.org/html/rfc4880#section-12.2
-fingerprint :: Packet -> String
-fingerprint p | version p == 4 =
-	BaseConvert.toString 16 $ SHA1.toInteger $ SHA1.hash $
-		LZ.unpack (LZ.concat (fingerprint_material p))
-fingerprint p | version p == 2 || version p == 3 =
-	concat $ map (BaseConvert.toString 16) $
-		MD5.hash $ LZ.unpack (LZ.concat (fingerprint_material p))
 
 data HashAlgorithm = MD5 | SHA1 | RIPEMD160 | SHA256 | SHA384 | SHA512 | SHA224
 	deriving (Show, Read, Eq)
