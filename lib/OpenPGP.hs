@@ -166,6 +166,14 @@ calculate_signature_trailer p =
 	]
 
 put_packet :: (Num a) => Packet -> (LZ.ByteString, a)
+put_packet (LiteralDataPacket { format = format, filename = filename,
+                                timestamp = timestamp, content = content
+                              }) =
+	(LZ.concat [encode format, encode filename_l, lz_filename,
+	            encode timestamp, content], 11)
+	where
+	filename_l  = (fromIntegral $ LZ.length lz_filename) :: Word8
+	lz_filename = LZ.fromString filename
 put_packet (UserIDPacket txt) = (LZ.fromString txt, 13)
 
 parse_packet :: Word8 -> Get Packet
