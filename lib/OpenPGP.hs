@@ -355,6 +355,10 @@ instance Binary KeyAlgorithm where
 data CompressionAlgorithm = Uncompressed | ZIP | ZLIB | BZip2
 	deriving (Show, Read, Eq)
 instance Binary CompressionAlgorithm where
+	put Uncompressed = put (0 :: Word8)
+	put ZIP          = put (1 :: Word8)
+	put ZLIB         = put (2 :: Word8)
+	put BZip2        = put (3 :: Word8)
 	get = do
 		tag <- get :: Get Word8
 		case tag of
