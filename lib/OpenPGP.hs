@@ -6,7 +6,7 @@ import Data.Word
 import Data.Map (Map, (!))
 import qualified Data.Map as Map
 import qualified Data.ByteString.Lazy as LZ
-import qualified Data.ByteString.Lazy.UTF8 as LZ (toString)
+import qualified Data.ByteString.Lazy.UTF8 as LZ (toString, fromString)
 
 import Data.Binary
 import Data.Binary.Get
@@ -70,6 +70,14 @@ data Packet =
 	deriving (Show, Read, Eq)
 
 instance Binary Packet where
+	put p = do
+		-- First two bits are 1 for new packet format
+		put ((tag .|. 0xC0) :: Word8)
+		-- Use 5-octet lengths
+		put (255 :: Word8)
+		put ((fromIntegral $ LZ.length body) :: Word32)
+		mapM_ putWord8 (LZ.unpack body)
+		where (body, tag) = put_packet p
 	get = do
 		tag <- get :: Get Word8
 		let (t, l) =
@@ -155,6 +163,9 @@ calculate_signature_trailer p =
 		encode (0xff :: Word8),
 		encode ((fromIntegral (LZ.length $ signature_packet_start p)) :: Word32)
 	]
+
+put_packet :: (Num a) => Packet -> (LZ.ByteString, a)
+put_packet (UserIDPacket txt) = (LZ.fromString txt, 13)
 
 parse_packet :: Word8 -> Get Packet
 -- SignaturePacket, http://tools.ietf.org/html/rfc4880#section-5.2
