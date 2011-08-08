@@ -10,6 +10,7 @@ import qualified Data.ByteString.Lazy.UTF8 as LZ (toString, fromString)
 
 import Data.Binary
 import Data.Binary.Get
+import Data.Binary.Put
 import qualified Codec.Compression.Zlib.Raw as Zip
 import qualified Codec.Compression.Zlib as Zlib
 import qualified Codec.Compression.BZip as BZip2
@@ -76,7 +77,7 @@ instance Binary Packet where
 		-- Use 5-octet lengths
 		put (255 :: Word8)
 		put ((fromIntegral $ LZ.length body) :: Word32)
-		mapM_ putWord8 (LZ.unpack body)
+		putLazyByteString body
 		where (body, tag) = put_packet p
 	get = do
 		tag <- get :: Get Word8
@@ -410,7 +411,7 @@ instance Binary MPI where
 		put (((fromIntegral . LZ.length $ bytes) - 1) * 8
 			+ floor (logBase 2 $ fromIntegral (bytes `LZ.index` 0))
 			+ 1 :: Word16)
-		mapM_ putWord8 (LZ.unpack bytes)
+		putLazyByteString bytes
 		where bytes = LZ.unfoldr (\x -> if x == 0 then Nothing
 			else Just (fromIntegral x, x `shiftR` 8)) i
 	get = do
@@ -430,7 +431,7 @@ instance Binary SignatureSubpacket where
 		put (255 :: Word8)
 		put ((fromIntegral $ LZ.length body) + 1 :: Word32)
 		put tag
-		mapM_ putWord8 (LZ.unpack body)
+		putLazyByteString body
 		where (body, tag) = put_signature_subpacket p
 	get = do
 		len <- fmap fromIntegral (get :: Get Word8)
