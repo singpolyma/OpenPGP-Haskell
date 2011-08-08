@@ -86,11 +86,10 @@ instance Binary Packet where
 				(tag .&. 63, parse_new_length)
 			else
 				((tag `shiftR` 2) .&. 15, parse_old_length tag)
-			in do
-			len <- l
-			-- This forces the whole packet to be consumed
-			packet <- getLazyByteString (fromIntegral len)
-			return $ runGet (parse_packet t) packet
+		len <- l
+		-- This forces the whole packet to be consumed
+		packet <- getLazyByteString (fromIntegral len)
+		return $ runGet (parse_packet t) packet
 
 -- http://tools.ietf.org/html/rfc4880#section-4.2.2
 parse_new_length :: Get Word32
@@ -188,23 +187,23 @@ parse_packet  2 = do
 			hash_algorithm <- get
 			hashed_size <- fmap fromIntegral (get :: Get Word16)
 			hashed_data <- getLazyByteString hashed_size
-			let hashed = runGet get_signature_subpackets hashed_data in do
-				unhashed_size <- fmap fromIntegral (get :: Get Word16)
-				unhashed_data <- getLazyByteString unhashed_size
-				let unhashed = runGet get_signature_subpackets unhashed_data in do
-					hash_head <- get
-					signature <- get
-					return (SignaturePacket {
-						version = version,
-						signature_type = signature_type,
-						key_algorithm = key_algorithm,
-						hash_algorithm = hash_algorithm,
-						hashed_subpackets = hashed,
-						unhashed_subpackets = unhashed,
-						hash_head = hash_head,
-						signature = signature,
-						trailer = LZ.concat [encode version, encode signature_type, encode key_algorithm, encode hash_algorithm, encode (fromIntegral hashed_size :: Word16), hashed_data, LZ.pack [4, 0xff], encode ((6 + (fromIntegral hashed_size)) :: Word32)]
-					})
+			let hashed = runGet get_signature_subpackets hashed_data
+			unhashed_size <- fmap fromIntegral (get :: Get Word16)
+			unhashed_data <- getLazyByteString unhashed_size
+			let unhashed = runGet get_signature_subpackets unhashed_data
+			hash_head <- get
+			signature <- get
+			return (SignaturePacket {
+				version = version,
+				signature_type = signature_type,
+				key_algorithm = key_algorithm,
+				hash_algorithm = hash_algorithm,
+				hashed_subpackets = hashed,
+				unhashed_subpackets = unhashed,
+				hash_head = hash_head,
+				signature = signature,
+				trailer = LZ.concat [encode version, encode signature_type, encode key_algorithm, encode hash_algorithm, encode (fromIntegral hashed_size :: Word16), hashed_data, LZ.pack [4, 0xff], encode ((6 + (fromIntegral hashed_size)) :: Word32)]
+			})
 -- OnePassSignaturePacket, http://tools.ietf.org/html/rfc4880#section-5.4
 parse_packet  4 = do
 	version <- get
@@ -232,35 +231,34 @@ parse_packet  5 = do
 	}) <- parse_packet 6
 	s2k_useage <- get :: Get Word8
 	let k = SecretKeyPacket version timestamp algorithm key s2k_useage
-		in do
-		k' <- case s2k_useage of
-			_ | s2k_useage == 255 || s2k_useage == 254 -> do
-				symmetric_type <- get
-				s2k_type <- get
-				s2k_hash_algorithm <- get
-				s2k_salt <- if s2k_type == 1 || s2k_type == 3 then get
-					else return undefined
-				s2k_count <- if s2k_type == 3 then do
-					c <- fmap fromIntegral (get :: Get Word8)
-					return $ fromIntegral $
-						(16 + (c .&. 15)) `shiftL` ((c `shiftR` 4) + 6)
-					else return undefined
-				return (k symmetric_type s2k_type s2k_hash_algorithm
-					s2k_salt s2k_count)
-			_ | s2k_useage > 0 ->
-				-- s2k_useage is symmetric_type in this case
-				return (k s2k_useage undefined undefined undefined undefined)
-			_ ->
-				return (k undefined undefined undefined undefined undefined)
-		if s2k_useage > 0 then do
-			encrypted <- getRemainingLazyByteString
-			return (k' encrypted undefined)
-		else do
-			key <- foldM (\m f -> do
-				mpi <- get :: Get MPI
-				return $ Map.insert f mpi m) key (secret_key_fields algorithm)
-			private_hash <- getRemainingLazyByteString
-			return ((k' undefined private_hash) {key = key})
+	k' <- case s2k_useage of
+		_ | s2k_useage == 255 || s2k_useage == 254 -> do
+			symmetric_type <- get
+			s2k_type <- get
+			s2k_hash_algorithm <- get
+			s2k_salt <- if s2k_type == 1 || s2k_type == 3 then get
+				else return undefined
+			s2k_count <- if s2k_type == 3 then do
+				c <- fmap fromIntegral (get :: Get Word8)
+				return $ fromIntegral $
+					(16 + (c .&. 15)) `shiftL` ((c `shiftR` 4) + 6)
+				else return undefined
+			return (k symmetric_type s2k_type s2k_hash_algorithm
+				s2k_salt s2k_count)
+		_ | s2k_useage > 0 ->
+			-- s2k_useage is symmetric_type in this case
+			return (k s2k_useage undefined undefined undefined undefined)
+		_ ->
+			return (k undefined undefined undefined undefined undefined)
+	if s2k_useage > 0 then do
+		encrypted <- getRemainingLazyByteString
+		return (k' encrypted undefined)
+	else do
+		key <- foldM (\m f -> do
+			mpi <- get :: Get MPI
+			return $ Map.insert f mpi m) key (secret_key_fields algorithm)
+		private_hash <- getRemainingLazyByteString
+		return ((k' undefined private_hash) {key = key})
 -- PublicKeyPacket, http://tools.ietf.org/html/rfc4880#section-5.5.2
 parse_packet  6 = do
 	version <- get :: Get Word8
@@ -286,11 +284,10 @@ parse_packet  8 = do
 		ZIP -> Zip.decompress
 		ZLIB -> Zlib.decompress
 		BZip2 -> BZip2.decompress
-		in
-		return (CompressedDataPacket {
-			compression_algorithm = algorithm,
-			message = runGet (get :: Get Message) (decompress message)
-		})
+	return (CompressedDataPacket {
+		compression_algorithm = algorithm,
+		message = runGet (get :: Get Message) (decompress message)
+	})
 -- LiteralDataPacket, http://tools.ietf.org/html/rfc4880#section-5.9
 parse_packet 11 = do
 	format <- get
