@@ -103,7 +103,7 @@ parse_new_length = do
 			second <- fmap fromIntegral (get :: Get Word8)
 			return $ ((len - 192) `shiftL` 8) + second + 192
 		-- Five octet length
-		_ | len == 255 -> get :: Get Word32
+		255 -> get :: Get Word32
 		-- TODO: Partial body lengths. 1 << (len & 0x1F)
 
 -- http://tools.ietf.org/html/rfc4880#section-4.2.1
@@ -232,11 +232,11 @@ parse_packet  5 = do
 	s2k_useage <- get :: Get Word8
 	let k = SecretKeyPacket version timestamp algorithm key s2k_useage
 	k' <- case s2k_useage of
-		_ | s2k_useage == 255 || s2k_useage == 254 -> do
+		_ | s2k_useage `elem` [255, 254] -> do
 			symmetric_type <- get
 			s2k_type <- get
 			s2k_hash_algorithm <- get
-			s2k_salt <- if s2k_type == 1 || s2k_type == 3 then get
+			s2k_salt <- if s2k_type `elem` [1, 3] then get
 				else return undefined
 			s2k_count <- if s2k_type == 3 then do
 				c <- fmap fromIntegral (get :: Get Word8)
@@ -321,7 +321,7 @@ fingerprint_material (PublicKeyPacket {version = 4,
 	]
 	where material = LZ.concat $
 		map (\f -> encode (key ! f)) (public_key_fields algorithm)
-fingerprint_material p | version p == 2 || version p == 3 = [n, e]
+fingerprint_material p | (version p) `elem` [2, 3] = [n, e]
 	where n = LZ.drop 2 (encode (key p ! 'n'))
 	      e = LZ.drop 2 (encode (key p ! 'e'))
 

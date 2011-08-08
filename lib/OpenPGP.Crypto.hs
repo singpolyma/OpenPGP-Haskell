@@ -20,7 +20,7 @@ fingerprint :: OpenPGP.Packet -> String
 fingerprint p | OpenPGP.version p == 4 =
 	BaseConvert.toString 16 $ SHA1.toInteger $ SHA1.hash $
 		LZ.unpack (LZ.concat (OpenPGP.fingerprint_material p))
-fingerprint p | OpenPGP.version p == 2 || OpenPGP.version p == 3 =
+fingerprint p | (OpenPGP.version p) `elem` [2, 3] =
 	concat $ map (BaseConvert.toString 16) $
 		MD5.hash $ LZ.unpack (LZ.concat (OpenPGP.fingerprint_material p))
 
