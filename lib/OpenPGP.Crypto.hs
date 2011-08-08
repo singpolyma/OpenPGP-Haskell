@@ -20,8 +20,8 @@ fingerprint :: OpenPGP.Packet -> String
 fingerprint p | OpenPGP.version p == 4 =
 	BaseConvert.toString 16 $ SHA1.toInteger $ SHA1.hash $
 		LZ.unpack (LZ.concat (OpenPGP.fingerprint_material p))
-fingerprint p | (OpenPGP.version p) `elem` [2, 3] =
-	concat $ map (BaseConvert.toString 16) $
+fingerprint p | OpenPGP.version p `elem` [2, 3] =
+	concatMap (BaseConvert.toString 16) $
 		MD5.hash $ LZ.unpack (LZ.concat (OpenPGP.fingerprint_material p))
 
 find_key :: OpenPGP.Message -> String -> Maybe OpenPGP.Packet
@@ -59,20 +59,20 @@ hash OpenPGP.SHA512 = SHA512.hash
 
 emsa_pkcs1_v1_5_encode :: [Word8] -> Int -> OpenPGP.HashAlgorithm -> [Word8]
 emsa_pkcs1_v1_5_encode m emLen algo =
-	[0, 1] ++ (replicate (emLen - (length t) - 3) 0xff) ++ [0] ++ t
-	where t = (emsa_pkcs1_v1_5_hash_padding algo) ++ (hash algo m)
+	[0, 1] ++ replicate (emLen - length t - 3) 0xff ++ [0] ++ t
+	where t = emsa_pkcs1_v1_5_hash_padding algo ++ hash algo m
 
 verify :: OpenPGP.Message -> OpenPGP.Message -> Int -> Bool
 verify keys packet sigidx =
-	encoded == (RSA.encrypt (n, e) raw_sig)
+	encoded == RSA.encrypt (n, e) raw_sig
 	where
 	raw_sig = LZ.unpack $ LZ.drop 2 $ encode (OpenPGP.signature sig)
 	encoded = emsa_pkcs1_v1_5_encode signature_over
 		(length n) (OpenPGP.hash_algorithm sig)
-	signature_over = LZ.unpack $ dta `LZ.append` (OpenPGP.trailer sig)
+	signature_over = LZ.unpack $ dta `LZ.append` OpenPGP.trailer sig
 	(n, e) = (keyfield_as_octets k 'n', keyfield_as_octets k 'e')
 	Just k = find_key keys issuer
 	Just issuer = OpenPGP.signature_issuer sig
-	sig = (sigs !! sigidx)
+	sig = sigs !! sigidx
 	(sigs, (OpenPGP.LiteralDataPacket {OpenPGP.content = dta}):_) =
 		OpenPGP.signatures_and_data packet
