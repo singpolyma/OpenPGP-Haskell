@@ -1,4 +1,4 @@
-module OpenPGP.Crypto (verify, fingerprint) where
+module Data.OpenPGP.Crypto (verify, fingerprint) where
 
 import Data.Word
 import Data.Map ((!))
@@ -12,8 +12,8 @@ import qualified Data.Digest.SHA256 as SHA256
 import qualified Data.Digest.SHA384 as SHA384
 import qualified Data.Digest.SHA512 as SHA512
 
-import qualified OpenPGP as OpenPGP
-import qualified BaseConvert as BaseConvert
+import qualified Data.OpenPGP as OpenPGP
+import qualified Data.BaseConvert as BaseConvert
 
 -- http://tools.ietf.org/html/rfc4880#section-12.2
 fingerprint :: OpenPGP.Packet -> String

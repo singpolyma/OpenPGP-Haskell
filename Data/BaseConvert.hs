@@ -1,4 +1,4 @@
-module BaseConvert (toString, toNum, toAlphaDigit, fromAlphaDigit) where
+module Data.BaseConvert (toString, toNum, toAlphaDigit, fromAlphaDigit) where
 
 import Data.Sequence
 import Data.Foldable (toList)

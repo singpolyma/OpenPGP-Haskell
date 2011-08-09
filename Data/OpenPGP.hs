@@ -1,4 +1,4 @@
-module OpenPGP (Message(..), Packet(..), SignatureSubpacket(..), HashAlgorithm(..), KeyAlgorithm(..), CompressionAlgorithm(..), MPI(..), fingerprint_material, signatures_and_data, signature_issuer) where
+module Data.OpenPGP (Message(..), Packet(..), SignatureSubpacket(..), HashAlgorithm(..), KeyAlgorithm(..), CompressionAlgorithm(..), MPI(..), fingerprint_material, signatures_and_data, signature_issuer) where
 
 import Control.Monad
 import Data.Bits
@@ -15,7 +15,7 @@ import qualified Codec.Compression.Zlib.Raw as Zip
 import qualified Codec.Compression.Zlib as Zlib
 import qualified Codec.Compression.BZip as BZip2
 
-import qualified BaseConvert as BaseConvert
+import qualified Data.BaseConvert as BaseConvert
 
 data Packet =
 	SignaturePacket {
@@ -535,7 +535,7 @@ instance Binary SignatureSubpacket where
 		packet <- getLazyByteString len
 		return $ runGet (parse_signature_subpacket tag) packet
 
-signature_issuer :: OpenPGP.Packet -> Maybe String
+signature_issuer :: Packet -> Maybe String
 signature_issuer (SignaturePacket {hashed_subpackets = hashed,
                                    unhashed_subpackets = unhashed}) =
 	if (length issuers) > 0 then Just issuer else Nothing
