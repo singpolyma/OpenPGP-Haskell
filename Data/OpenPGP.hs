@@ -326,10 +326,10 @@ parse_packet  5 = do
 			return (k s2k_useage undefined undefined undefined undefined)
 		_ ->
 			return (k undefined undefined undefined undefined undefined)
-	if s2k_useage > 0 then do
-		encrypted <- getRemainingLazyByteString
+	if s2k_useage > 0 then do {
+		encrypted <- getRemainingLazyByteString;
 		return (k' encrypted undefined)
-	else do
+	} else do
 		key <- foldM (\m f -> do
 			mpi <- get :: Get MPI
 			return $ Map.insert f mpi m) key (secret_key_fields algorithm)
@@ -475,9 +475,9 @@ instance Binary Message where
 		put (Message xs)
 	get = do
 		done <- isEmpty
-		if done then do
-			return (Message [])
-		else do
+		if done then do {
+			return (Message []);
+		} else do
 			next_packet <- get :: Get Packet
 			(Message tail) <- get :: Get Message
 			return (Message (next_packet:tail))
@@ -554,9 +554,9 @@ put_signature_subpacket (IssuerPacket keyid) =
 get_signature_subpackets :: Get [SignatureSubpacket]
 get_signature_subpackets = do
 	done <- isEmpty
-	if done then do
-		return []
-	else do
+	if done then do {
+		return [];
+	} else do
 		next_packet <- get :: Get SignatureSubpacket
 		tail <- get_signature_subpackets
 		return (next_packet:tail)
