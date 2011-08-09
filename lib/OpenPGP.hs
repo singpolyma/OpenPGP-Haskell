@@ -199,6 +199,38 @@ put_packet (OnePassSignaturePacket { version = version,
 	             encode hash_algorithm, encode key_algorithm,
 	             encode (BaseConvert.toNum 16 key_id :: Word64),
 	             encode nested ], 4)
+put_packet (SecretKeyPacket { version = version, timestamp = timestamp,
+                              key_algorithm = algorithm, key = key,
+                              s2k_useage = s2k_useage,
+                              symmetric_type = symmetric_type,
+                              s2k_type = s2k_type,
+                              s2k_hash_algorithm = s2k_hash_algo,
+                              s2k_salt = s2k_salt,
+                              encrypted_data = encrypted_data }) =
+	(LZ.concat $ [p, encode s2k_useage] ++
+	(if s2k_useage `elem` [255, 254] then
+		-- TODO: if s2k_type == 3 reverse ugly bit manipulation
+		[encode symmetric_type, encode s2k_type, encode s2k_hash_algo] ++
+		if s2k_type `elem` [1, 3] then [encode s2k_salt] else []
+	else []) ++
+	(if s2k_useage > 0 then
+		[encrypted_data]
+	else s) ++
+	(if s2k_useage == 254 then
+		[LZ.replicate 20 0] -- TODO SHA1 Checksum
+	else
+		[encode $ (fromIntegral $
+			LZ.foldl (\c i -> (c + (fromIntegral i)) `mod` 65536)
+			(0::Integer) (LZ.concat s) :: Word16)]), 5)
+	where
+	p = fst (put_packet $
+		PublicKeyPacket version timestamp algorithm key
+		:: (LZ.ByteString, Integer)) -- Supress warning
+	s = map (encode . (key !)) (secret_key_fields algorithm)
+put_packet (PublicKeyPacket { version = 4, timestamp = timestamp,
+                              key_algorithm = algorithm, key = key }) =
+	(LZ.concat $ [LZ.singleton 4, encode timestamp, encode algorithm] ++
+	            map (encode . (key !)) (public_key_fields algorithm), 6)
 put_packet (CompressedDataPacket { compression_algorithm = algorithm,
                                    message = message }) =
 	(LZ.append (encode algorithm) $ compress $ encode message, 8)
@@ -216,6 +248,7 @@ put_packet (LiteralDataPacket { format = format, filename = filename,
 	filename_l  = (fromIntegral $ LZ.length lz_filename) :: Word8
 	lz_filename = LZ.fromString filename
 put_packet (UserIDPacket txt) = (LZ.fromString txt, 13)
+put_packet _ = error "Unsupported Packet version or type in put_packet."
 
 parse_packet :: Word8 -> Get Packet
 -- SignaturePacket, http://tools.ietf.org/html/rfc4880#section-5.2
