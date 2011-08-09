@@ -172,6 +172,41 @@ calculate_signature_trailer p =
 	]
 
 put_packet :: (Num a) => Packet -> (LZ.ByteString, a)
+put_packet (SignaturePacket { version = 4,
+                              signature_type = signature_type,
+                              key_algorithm = key_algorithm,
+                              hash_algorithm = hash_algorithm,
+                              hashed_subpackets = hashed_subpackets,
+                              unhashed_subpackets = unhashed_subpackets,
+                              hash_head = hash_head,
+                              signature = signature }) =
+	(LZ.concat [ LZ.singleton 4, encode signature_type,
+	            encode key_algorithm, encode hash_algorithm,
+	            encode (fromIntegral $ LZ.length hashed :: Word16),
+	            hashed,
+	            encode (fromIntegral $ LZ.length unhashed :: Word16),
+	            unhashed,
+	            encode hash_head, encode signature ], 2)
+	where hashed   = LZ.concat $ map encode hashed_subpackets
+	      unhashed = LZ.concat $ map encode unhashed_subpackets
+put_packet (OnePassSignaturePacket { version = version,
+                                     signature_type = signature_type,
+                                     hash_algorithm = hash_algorithm,
+                                     key_algorithm = key_algorithm,
+                                     key_id = key_id,
+                                     nested = nested }) =
+	(LZ.concat [ encode version, encode signature_type,
+	             encode hash_algorithm, encode key_algorithm,
+	             encode (BaseConvert.toNum 16 key_id :: Word64),
+	             encode nested ], 4)
+put_packet (CompressedDataPacket { compression_algorithm = algorithm,
+                                   message = message }) =
+	(LZ.append (encode algorithm) $ compress $ encode message, 8)
+	where compress = case algorithm of
+		Uncompressed -> id
+		ZIP -> Zip.compress
+		ZLIB -> Zlib.compress
+		BZip2 -> BZip2.compress
 put_packet (LiteralDataPacket { format = format, filename = filename,
                                 timestamp = timestamp, content = content
                               }) =
