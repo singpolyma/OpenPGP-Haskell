@@ -115,7 +115,7 @@ parse_new_length = do
 -- http://tools.ietf.org/html/rfc4880#section-4.2.1
 parse_old_length :: Word8 -> Get Word32
 parse_old_length tag =
-	case (tag .&. 3) of
+	case tag .&. 3 of
 		-- One octet length
 		0 -> fmap fromIntegral (get :: Get Word8)
 		-- Two octet length
@@ -154,7 +154,7 @@ signature_packet_start (SignaturePacket {
 	hash_algorithm = hash_algorithm,
 	hashed_subpackets = hashed_subpackets
 }) =
-	LZ.concat $ [
+	LZ.concat [
 		encode (0x04 :: Word8),
 		encode signature_type,
 		encode key_algorithm,
@@ -173,7 +173,7 @@ calculate_signature_trailer p =
 		signature_packet_start p,
 		encode (0x04 :: Word8),
 		encode (0xff :: Word8),
-		encode ((fromIntegral (LZ.length $ signature_packet_start p)) :: Word32)
+		encode (fromIntegral (LZ.length $ signature_packet_start p) :: Word32)
 	]
 
 put_packet :: (Num a) => Packet -> (LZ.ByteString, a)
@@ -224,8 +224,8 @@ put_packet (SecretKeyPacket { version = version, timestamp = timestamp,
 	(if s2k_useage == 254 then
 		[LZ.replicate 20 0] -- TODO SHA1 Checksum
 	else
-		[encode $ (fromIntegral $
-			LZ.foldl (\c i -> (c + (fromIntegral i)) `mod` 65536)
+		[encode (fromIntegral $
+			LZ.foldl (\c i -> (c + fromIntegral i) `mod` 65536)
 			(0::Integer) (LZ.concat s) :: Word16)]), 5)
 	where
 	p = fst (put_packet $
@@ -273,7 +273,7 @@ parse_packet  2 = do
 			let unhashed = runGet get_signature_subpackets unhashed_data
 			hash_head <- get
 			signature <- get
-			return (SignaturePacket {
+			return SignaturePacket {
 				version = version,
 				signature_type = signature_type,
 				key_algorithm = key_algorithm,
@@ -282,9 +282,9 @@ parse_packet  2 = do
 				unhashed_subpackets = unhashed,
 				hash_head = hash_head,
 				signature = signature,
-				trailer = LZ.concat [encode version, encode signature_type, encode key_algorithm, encode hash_algorithm, encode (fromIntegral hashed_size :: Word16), hashed_data, LZ.pack [4, 0xff], encode ((6 + (fromIntegral hashed_size)) :: Word32)]
-			})
-		x -> fail $ "Unknown SignaturePacket version " ++ (show x) ++ "."
+				trailer = LZ.concat [encode version, encode signature_type, encode key_algorithm, encode hash_algorithm, encode (fromIntegral hashed_size :: Word16), hashed_data, LZ.pack [4, 0xff], encode ((6 + fromIntegral hashed_size) :: Word32)]
+			}
+		x -> fail $ "Unknown SignaturePacket version " ++ show x ++ "."
 -- OnePassSignaturePacket, http://tools.ietf.org/html/rfc4880#section-5.4
 parse_packet  4 = do
 	version <- get
@@ -293,14 +293,14 @@ parse_packet  4 = do
 	key_algo <- get
 	key_id <- get :: Get Word64
 	nested <- get
-	return (OnePassSignaturePacket {
+	return OnePassSignaturePacket {
 		version = version,
 		signature_type = signature_type,
 		hash_algorithm = hash_algo,
 		key_algorithm = key_algo,
-		key_id = (BaseConvert.toString 16 key_id),
+		key_id = BaseConvert.toString 16 key_id,
 		nested = nested
-	})
+	}
 -- SecretKeyPacket, http://tools.ietf.org/html/rfc4880#section-5.5.3
 parse_packet  5 = do
 	-- Parse PublicKey part
@@ -350,13 +350,13 @@ parse_packet  6 = do
 			key <- mapM (\f -> do
 				mpi <- get :: Get MPI
 				return (f, mpi)) (public_key_fields algorithm)
-			return (PublicKeyPacket {
+			return PublicKeyPacket {
 				version = 4,
 				timestamp = timestamp,
 				key_algorithm = algorithm,
 				key = Map.fromList key
-			})
-		x -> fail $ "Unsupported PublicKeyPacket version " ++ (show x) ++ "."
+			}
+		x -> fail $ "Unsupported PublicKeyPacket version " ++ show x ++ "."
 -- CompressedDataPacket, http://tools.ietf.org/html/rfc4880#section-5.6
 parse_packet  8 = do
 	algorithm <- get
@@ -366,10 +366,10 @@ parse_packet  8 = do
 		ZIP -> Zip.decompress
 		ZLIB -> Zlib.decompress
 		BZip2 -> BZip2.decompress
-	return (CompressedDataPacket {
+	return CompressedDataPacket {
 		compression_algorithm = algorithm,
 		message = runGet (get :: Get Message) (decompress message)
-	})
+	}
 -- LiteralDataPacket, http://tools.ietf.org/html/rfc4880#section-5.9
 parse_packet 11 = do
 	format <- get
@@ -377,17 +377,17 @@ parse_packet 11 = do
 	filename <- getLazyByteString (fromIntegral filenameLength)
 	timestamp <- get
 	content <- getRemainingLazyByteString
-	return (LiteralDataPacket {
+	return LiteralDataPacket {
 		format = format,
 		filename = LZ.toString filename,
 		timestamp = timestamp,
 		content = content
-	})
+	}
 -- UserIDPacket, http://tools.ietf.org/html/rfc4880#section-5.11
 parse_packet 13 =
-	fmap UserIDPacket (fmap LZ.toString getRemainingLazyByteString)
+	fmap (UserIDPacket . LZ.toString) getRemainingLazyByteString
 -- Fail nicely for unimplemented packets
-parse_packet x = fail $ "Unimplemented OpenPGP packet tag " ++ (show x) ++ "."
+parse_packet x = fail $ "Unimplemented OpenPGP packet tag " ++ show x ++ "."
 
 -- | Helper method for fingerprints and such
 fingerprint_material :: Packet -> [LZ.ByteString]
@@ -403,7 +403,7 @@ fingerprint_material (PublicKeyPacket {version = 4,
 	]
 	where material = LZ.concat $
 		map (\f -> encode (key ! f)) (public_key_fields algorithm)
-fingerprint_material p | (version p) `elem` [2, 3] = [n, e]
+fingerprint_material p | version p `elem` [2, 3] = [n, e]
 	where n = LZ.drop 2 (encode (key p ! 'n'))
 	      e = LZ.drop 2 (encode (key p ! 'e'))
 fingerprint_material _ =
@@ -429,7 +429,7 @@ instance Binary HashAlgorithm where
 			09 -> return SHA384
 			10 -> return SHA512
 			11 -> return SHA224
-			x  -> fail $ "Unknown HashAlgorithm " ++ (show x) ++ "."
+			x  -> fail $ "Unknown HashAlgorithm " ++ show x ++ "."
 
 data KeyAlgorithm = RSA | RSA_E | RSA_S | ELGAMAL | DSA | ECC | ECDSA | DH
 	deriving (Show, Read, Eq)
@@ -453,7 +453,7 @@ instance Binary KeyAlgorithm where
 			18 -> return ECC
 			19 -> return ECDSA
 			21 -> return DH
-			x  -> fail $ "Unknown KeyAlgorithm " ++ (show x) ++ "."
+			x  -> fail $ "Unknown KeyAlgorithm " ++ show x ++ "."
 
 data CompressionAlgorithm = Uncompressed | ZIP | ZLIB | BZip2
 	deriving (Show, Read, Eq)
@@ -469,7 +469,7 @@ instance Binary CompressionAlgorithm where
 			1 -> return ZIP
 			2 -> return ZLIB
 			3 -> return BZip2
-			x  -> fail $ "Unknown CompressionAlgorithm " ++ (show x) ++ "."
+			x  -> fail $ "Unknown CompressionAlgorithm " ++ show x ++ "."
 
 -- A message is encoded as a list that takes the entire file
 newtype Message = Message [Packet] deriving (Show, Read, Eq)
@@ -480,12 +480,11 @@ instance Binary Message where
 		put (Message xs)
 	get = do
 		done <- isEmpty
-		if done then do {
-			return (Message []);
-		} else do
-			next_packet <- get :: Get Packet
-			(Message tail) <- get :: Get Message
-			return (Message (next_packet:tail))
+		if done then return (Message []) else do {
+			next_packet <- get :: Get Packet;
+			(Message tail) <- get :: Get Message;
+			return (Message (next_packet:tail));
+		}
 
 -- | Extract all signature and data packets from a 'Message'
 signatures_and_data :: Message -> ([Packet], [Packet])
@@ -522,7 +521,7 @@ instance Binary SignatureSubpacket where
 	put p = do
 		-- Use 5-octet-length + 1 for tag as the first packet body octet
 		put (255 :: Word8)
-		put ((fromIntegral $ LZ.length body) + 1 :: Word32)
+		put (fromIntegral (LZ.length body) + 1 :: Word32)
 		put tag
 		putLazyByteString body
 		where (body, tag) = put_signature_subpacket p
@@ -545,9 +544,9 @@ instance Binary SignatureSubpacket where
 signature_issuer :: Packet -> Maybe String
 signature_issuer (SignaturePacket {hashed_subpackets = hashed,
                                    unhashed_subpackets = unhashed}) =
-	if (length issuers) > 0 then Just issuer else Nothing
+	if length issuers > 0 then Just issuer else Nothing
 	where IssuerPacket issuer = issuers !! 0
-	      issuers = (filter isIssuer hashed) ++ (filter isIssuer unhashed)
+	      issuers = filter isIssuer hashed ++ filter isIssuer unhashed
 	      isIssuer (IssuerPacket {}) = True
 	      isIssuer _ = False
 signature_issuer _ = Nothing
@@ -556,17 +555,16 @@ put_signature_subpacket :: SignatureSubpacket -> (LZ.ByteString, Word8)
 put_signature_subpacket (SignatureCreationTimePacket time) =
 	(encode time, 2)
 put_signature_subpacket (IssuerPacket keyid) =
-	(encode ((BaseConvert.toNum 16 keyid) :: Word64), 16)
+	(encode (BaseConvert.toNum 16 keyid :: Word64), 16)
 
 get_signature_subpackets :: Get [SignatureSubpacket]
 get_signature_subpackets = do
 	done <- isEmpty
-	if done then do {
-		return [];
-	} else do
-		next_packet <- get :: Get SignatureSubpacket
-		tail <- get_signature_subpackets
-		return (next_packet:tail)
+	if done then return [] else do {
+		next_packet <- get :: Get SignatureSubpacket;
+		tail <- get_signature_subpackets;
+		return (next_packet:tail);
+	}
 
 parse_signature_subpacket :: Word8 -> Get SignatureSubpacket
 -- SignatureCreationTimePacket, http://tools.ietf.org/html/rfc4880#section-5.2.3.4
@@ -577,4 +575,4 @@ parse_signature_subpacket 16 = do
 	return $ IssuerPacket (BaseConvert.toString 16 keyid)
 -- Fail nicely for unimplemented packets
 parse_signature_subpacket x =
-	fail $ "Unimplemented OpenPGP signature subpacket tag " ++ (show x) ++ "."
+	fail $ "Unimplemented OpenPGP signature subpacket tag " ++ show x ++ "."
