@@ -1,0 +1,52 @@
+name:            openpgp
+version:         0.1
+cabal-version:   >= 1.8
+license:         OtherLicense
+license-file:    COPYING
+category:        Data
+copyright:       © 2011 Stephen Paul Weber
+author:          Stephen Paul Weber <singpolyma@singpolyma.net>
+maintainer:      Stephen Paul Weber <singpolyma@singpolyma.net>
+stability:       experimental
+tested-with:     GHC == 7.0.3
+synopsis:        Implementation of the OpenPGP message format
+homepage:        http://github.com/singpolyma/OpenPGP-Haskell
+bug-reports:     http://github.com/singpolyma/OpenPGP-Haskell/issues
+build-type:      Simple
+description:     This is an OpenPGP library inspired by my work on OpenPGP-PHP <http://github.com/bendiken/openpgp-php>.
+        It defines types Message and Packet to represent OpenPGP messages as series
+        of packets and then defines instances of Data.Binary for each to facilitate
+        encoding/decoding.
+        .
+        There is also a wrapper around <http://hackage.haskell.org/package/Crypto>
+        that currently does fingerprint generation and signature verification.
+        .
+        It is intended that you use qualified imports with this library.  If importing both modules, something like this will do:
+        .
+        > import qualified Data.OpenPGP as OpenPGP
+        > import qualified Data.OpenPGP.Crypto as OpenPGP
+
+extra-source-files:
+        README
+
+library
+        exposed-modules:
+                Data.OpenPGP
+                Data.OpenPGP.Crypto
+
+        other-modules:
+                Data.BaseConvert
+
+        build-depends:
+                base == 4.*,
+                containers,
+                bytestring,
+                utf8-string,
+                binary,
+                zlib,
+                bzlib,
+                Crypto
+
+source-repository head
+        type:     git
+        location: git://github.com/singpolyma/OpenPGP-Haskell.git
