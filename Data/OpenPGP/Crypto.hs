@@ -1,3 +1,9 @@
+-- | This is a wrapper around <http://hackage.haskell.org/package/Crypto>
+-- that currently does fingerprint generation and signature verification.
+--
+-- The recommended way to import this module is:
+--
+-- > import qualified Data.OpenPGP.Crypto as OpenPGP
 module Data.OpenPGP.Crypto (verify, fingerprint) where
 
 import Data.Word
@@ -15,7 +21,8 @@ import qualified Data.Digest.SHA512 as SHA512
 import qualified Data.OpenPGP as OpenPGP
 import qualified Data.BaseConvert as BaseConvert
 
--- http://tools.ietf.org/html/rfc4880#section-12.2
+-- | Generate a key fingerprint from a PublicKeyPacket or SecretKeyPacket
+-- <http://tools.ietf.org/html/rfc4880#section-12.2>
 fingerprint :: OpenPGP.Packet -> String
 fingerprint p | OpenPGP.version p == 4 =
 	BaseConvert.toString 16 $ SHA1.toInteger $ SHA1.hash $
@@ -66,8 +73,12 @@ emsa_pkcs1_v1_5_encode m emLen algo =
 	[0, 1] ++ replicate (emLen - length t - 3) 0xff ++ [0] ++ t
 	where t = emsa_pkcs1_v1_5_hash_padding algo ++ hash algo m
 
-verify :: OpenPGP.Message -> OpenPGP.Message -> Int -> Bool
-verify keys packet sigidx =
+-- | Verify a message signature.  Only supports RSA keys for now.
+verify :: OpenPGP.Message    -- ^ Keys that may have made the signature
+          -> OpenPGP.Message -- ^ Message containing data and signature packet
+          -> Int             -- ^ Index of signature to verify (0th, 1st, etc)
+          -> Bool
+verify keys message sigidx =
 	encoded == RSA.encrypt (n, e) raw_sig
 	where
 	raw_sig = LZ.unpack $ LZ.drop 2 $ encode (OpenPGP.signature sig)
@@ -79,4 +90,4 @@ verify keys packet sigidx =
 	Just issuer = OpenPGP.signature_issuer sig
 	sig = sigs !! sigidx
 	(sigs, (OpenPGP.LiteralDataPacket {OpenPGP.content = dta}):_) =
-		OpenPGP.signatures_and_data packet
+		OpenPGP.signatures_and_data message

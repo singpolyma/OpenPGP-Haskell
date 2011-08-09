@@ -1,3 +1,8 @@
+-- | Main implementation of the OpenPGP message format <http://tools.ietf.org/html/rfc4880>
+--
+-- The recommended way to import this module is:
+--
+-- > import qualified Data.OpenPGP as OpenPGP
 module Data.OpenPGP (Message(..), Packet(..), SignatureSubpacket(..), HashAlgorithm(..), KeyAlgorithm(..), CompressionAlgorithm(..), MPI(..), fingerprint_material, signatures_and_data, signature_issuer) where
 
 import Control.Monad
@@ -384,7 +389,7 @@ parse_packet 13 =
 -- Fail nicely for unimplemented packets
 parse_packet x = fail $ "Unimplemented OpenPGP packet tag " ++ (show x) ++ "."
 
--- Helper method for fingerprints and such
+-- | Helper method for fingerprints and such
 fingerprint_material :: Packet -> [LZ.ByteString]
 fingerprint_material (PublicKeyPacket {version = 4,
                       timestamp = timestamp,
@@ -482,6 +487,7 @@ instance Binary Message where
 			(Message tail) <- get :: Get Message
 			return (Message (next_packet:tail))
 
+-- | Extract all signature and data packets from a 'Message'
 signatures_and_data :: Message -> ([Packet], [Packet])
 signatures_and_data (Message ((CompressedDataPacket {message = m}):_)) =
 	signatures_and_data m
@@ -535,6 +541,7 @@ instance Binary SignatureSubpacket where
 		packet <- getLazyByteString len
 		return $ runGet (parse_signature_subpacket tag) packet
 
+-- | Find the keyid that issued a SignaturePacket
 signature_issuer :: Packet -> Maybe String
 signature_issuer (SignaturePacket {hashed_subpackets = hashed,
                                    unhashed_subpackets = unhashed}) =
