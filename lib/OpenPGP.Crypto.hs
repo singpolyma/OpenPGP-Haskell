@@ -1,7 +1,7 @@
 module OpenPGP.Crypto (verify, fingerprint) where
 
 import Data.Word
-import Data.Map (Map, (!))
+import Data.Map ((!))
 import qualified Data.ByteString.Lazy as LZ
 
 import Data.Binary
@@ -23,6 +23,7 @@ fingerprint p | OpenPGP.version p == 4 =
 fingerprint p | OpenPGP.version p `elem` [2, 3] =
 	concatMap (BaseConvert.toString 16) $
 		MD5.hash $ LZ.unpack (LZ.concat (OpenPGP.fingerprint_material p))
+fingerprint _ = error "Unsupported Packet version or type in fingerprint."
 
 find_key :: OpenPGP.Message -> String -> Maybe OpenPGP.Packet
 find_key (OpenPGP.Message (x@(OpenPGP.PublicKeyPacket {}):xs)) keyid =
@@ -49,6 +50,8 @@ emsa_pkcs1_v1_5_hash_padding OpenPGP.SHA1 = [0x30, 0x21, 0x30, 0x09, 0x06, 0x05,
 emsa_pkcs1_v1_5_hash_padding OpenPGP.SHA256 = [0x30, 0x31, 0x30, 0x0d, 0x06, 0x09, 0x60, 0x86, 0x48, 0x01, 0x65, 0x03, 0x04, 0x02, 0x01, 0x05, 0x00, 0x04, 0x20]
 emsa_pkcs1_v1_5_hash_padding OpenPGP.SHA384 = [0x30, 0x41, 0x30, 0x0d, 0x06, 0x09, 0x60, 0x86, 0x48, 0x01, 0x65, 0x03, 0x04, 0x02, 0x02, 0x05, 0x00, 0x04, 0x30]
 emsa_pkcs1_v1_5_hash_padding OpenPGP.SHA512 = [0x30, 0x51, 0x30, 0x0d, 0x06, 0x09, 0x60, 0x86, 0x48, 0x01, 0x65, 0x03, 0x04, 0x02, 0x03, 0x05, 0x00, 0x04, 0x40]
+emsa_pkcs1_v1_5_hash_padding _ =
+	error "Unsupported HashAlgorithm in emsa_pkcs1_v1_5_hash_padding."
 
 hash :: OpenPGP.HashAlgorithm -> [Word8] -> [Word8]
 hash OpenPGP.MD5 = MD5.hash
@@ -56,6 +59,7 @@ hash OpenPGP.SHA1 = reverse . drop 2 . LZ.unpack . encode . OpenPGP.MPI . SHA1.t
 hash OpenPGP.SHA256 = SHA256.hash
 hash OpenPGP.SHA384 = SHA384.hash
 hash OpenPGP.SHA512 = SHA512.hash
+hash _ = error "Unsupported HashAlgorithm in hash."
 
 emsa_pkcs1_v1_5_encode :: [Word8] -> Int -> OpenPGP.HashAlgorithm -> [Word8]
 emsa_pkcs1_v1_5_encode m emLen algo =

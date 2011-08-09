@@ -5,6 +5,7 @@ import Data.Foldable (toList)
 import Data.List
 import Data.Char
 
+digit_alphabet :: [Char]
 digit_alphabet = ['0'..'9'] ++ ['A'..]
 
 toBase :: (Integral a) => a -> a -> [a]

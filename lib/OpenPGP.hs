@@ -105,6 +105,7 @@ parse_new_length = do
 		-- Five octet length
 		255 -> get :: Get Word32
 		-- TODO: Partial body lengths. 1 << (len & 0x1F)
+		_ -> fail "Unsupported new packet length."
 
 -- http://tools.ietf.org/html/rfc4880#section-4.2.1
 parse_old_length :: Word8 -> Get Word32
@@ -118,6 +119,8 @@ parse_old_length tag =
 		2 -> get
 		-- Indeterminate length
 		3 -> fmap fromIntegral remaining
+		-- Error
+		_ -> fail "Unsupported old packet length."
 
 -- http://tools.ietf.org/html/rfc4880#section-5.5.2
 public_key_fields :: KeyAlgorithm -> [Char]
@@ -126,6 +129,7 @@ public_key_fields RSA_E   = public_key_fields RSA
 public_key_fields RSA_S   = public_key_fields RSA
 public_key_fields ELGAMAL = ['p', 'g', 'y']
 public_key_fields DSA     = ['p', 'q', 'g', 'y']
+public_key_fields _       = undefined -- Nothing in the spec. Maybe empty
 
 -- http://tools.ietf.org/html/rfc4880#section-5.5.3
 secret_key_fields :: KeyAlgorithm -> [Char]
@@ -134,6 +138,7 @@ secret_key_fields RSA_E   = secret_key_fields RSA
 secret_key_fields RSA_S   = secret_key_fields RSA
 secret_key_fields ELGAMAL = ['x']
 secret_key_fields DSA     = ['x']
+secret_key_fields _       = undefined -- Nothing in the spec. Maybe empty
 
 -- Need this seperate for trailer calculation
 signature_packet_start :: Packet -> LZ.ByteString
@@ -153,6 +158,8 @@ signature_packet_start (SignaturePacket {
 		hashed_subs
 	]
 	where hashed_subs = LZ.concat $ map encode hashed_subpackets
+signature_packet_start _ =
+	error "Trying to get start of signature packet for non signature packet."
 
 -- The trailer is just the top of the body plus some crap
 calculate_signature_trailer :: Packet -> LZ.ByteString
@@ -204,6 +211,7 @@ parse_packet  2 = do
 				signature = signature,
 				trailer = LZ.concat [encode version, encode signature_type, encode key_algorithm, encode hash_algorithm, encode (fromIntegral hashed_size :: Word16), hashed_data, LZ.pack [4, 0xff], encode ((6 + (fromIntegral hashed_size)) :: Word32)]
 			})
+		x -> fail $ "Unknown SignaturePacket version " ++ (show x) ++ "."
 -- OnePassSignaturePacket, http://tools.ietf.org/html/rfc4880#section-5.4
 parse_packet  4 = do
 	version <- get
@@ -275,6 +283,7 @@ parse_packet  6 = do
 				key_algorithm = algorithm,
 				key = Map.fromList key
 			})
+		x -> fail $ "Unsupported PublicKeyPacket version " ++ (show x) ++ "."
 -- CompressedDataPacket, http://tools.ietf.org/html/rfc4880#section-5.6
 parse_packet  8 = do
 	algorithm <- get
@@ -305,7 +314,7 @@ parse_packet 11 = do
 parse_packet 13 =
 	fmap UserIDPacket (fmap LZ.toString getRemainingLazyByteString)
 -- Fail nicely for unimplemented packets
-parse_packet _ = fail "Unimplemented OpenPGP packet tag"
+parse_packet x = fail $ "Unimplemented OpenPGP packet tag " ++ (show x) ++ "."
 
 -- Helper method for fingerprints and such
 fingerprint_material :: Packet -> [LZ.ByteString]
@@ -324,6 +333,8 @@ fingerprint_material (PublicKeyPacket {version = 4,
 fingerprint_material p | (version p) `elem` [2, 3] = [n, e]
 	where n = LZ.drop 2 (encode (key p ! 'n'))
 	      e = LZ.drop 2 (encode (key p ! 'e'))
+fingerprint_material _ =
+	error "Unsupported Packet version or type in fingerprint_material."
 
 data HashAlgorithm = MD5 | SHA1 | RIPEMD160 | SHA256 | SHA384 | SHA512 | SHA224
 	deriving (Show, Read, Eq)
@@ -345,6 +356,7 @@ instance Binary HashAlgorithm where
 			09 -> return SHA384
 			10 -> return SHA512
 			11 -> return SHA224
+			x  -> fail $ "Unknown HashAlgorithm " ++ (show x) ++ "."
 
 data KeyAlgorithm = RSA | RSA_E | RSA_S | ELGAMAL | DSA | ECC | ECDSA | DH
 	deriving (Show, Read, Eq)
@@ -368,6 +380,7 @@ instance Binary KeyAlgorithm where
 			18 -> return ECC
 			19 -> return ECDSA
 			21 -> return DH
+			x  -> fail $ "Unknown KeyAlgorithm " ++ (show x) ++ "."
 
 data CompressionAlgorithm = Uncompressed | ZIP | ZLIB | BZip2
 	deriving (Show, Read, Eq)
@@ -383,6 +396,7 @@ instance Binary CompressionAlgorithm where
 			1 -> return ZIP
 			2 -> return ZLIB
 			3 -> return BZip2
+			x  -> fail $ "Unknown CompressionAlgorithm " ++ (show x) ++ "."
 
 -- A message is encoded as a list that takes the entire file
 newtype Message = Message [Packet] deriving (Show, Read, Eq)
@@ -414,14 +428,14 @@ newtype MPI = MPI Integer deriving (Show, Read, Eq, Ord)
 instance Binary MPI where
 	put (MPI i) = do
 		put (((fromIntegral . LZ.length $ bytes) - 1) * 8
-			+ floor (logBase 2 $ fromIntegral (bytes `LZ.index` 0))
+			+ floor (logBase (2::Double) $ fromIntegral (bytes `LZ.index` 0))
 			+ 1 :: Word16)
 		putLazyByteString bytes
 		where bytes = LZ.unfoldr (\x -> if x == 0 then Nothing
 			else Just (fromIntegral x, x `shiftR` 8)) i
 	get = do
 		length <- fmap fromIntegral (get :: Get Word16)
-		bytes <- getLazyByteString (floor ((length + 7) / 8))
+		bytes <- getLazyByteString ((length + 7) `div` 8)
 		return (MPI (LZ.foldr (\b a ->
 			a `shiftL` 8 .|. fromIntegral b) 0 bytes))
 
@@ -461,6 +475,7 @@ signature_issuer (SignaturePacket {hashed_subpackets = hashed,
 	      issuers = (filter isIssuer hashed) ++ (filter isIssuer unhashed)
 	      isIssuer (IssuerPacket {}) = True
 	      isIssuer _ = False
+signature_issuer _ = Nothing
 
 put_signature_subpacket :: SignatureSubpacket -> (LZ.ByteString, Word8)
 put_signature_subpacket (SignatureCreationTimePacket time) =
@@ -486,5 +501,5 @@ parse_signature_subpacket 16 = do
 	keyid <- get :: Get Word64
 	return $ IssuerPacket (BaseConvert.toString 16 keyid)
 -- Fail nicely for unimplemented packets
-parse_signature_subpacket _ =
-	fail "Unimplemented OpenPGP signature subpacket tag"
+parse_signature_subpacket x =
+	fail $ "Unimplemented OpenPGP signature subpacket tag " ++ (show x) ++ "."
