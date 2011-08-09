@@ -2,4 +2,11 @@ OpenPGP-Haskell
 
 This is an OpenPGP library inspired by my work on OpenPGP-PHP <http://github.com/bendiken/openpgp-php>.
 
-It defines types Message and Packet to represent OpenPGP Messages as series of OpenPGP packets and then defines instances of Binary for each to facilitate encoding/decoding.
+It defines types Message and Packet to represent OpenPGP messages as series of packets and then defines instances of Data.Binary for each to facilitate encoding/decoding.
+
+There is also a wrapper around <http://hackage.haskell.org/package/Crypto> that currently does fingerprint generation and signature verification.
+
+It is intended that you use qualified imports with this library.  If importing both modules, something like this will do:
+
+> import qualified Data.OpenPGP as OpenPGP
+> import qualified Data.OpenPGP.Crypto as OpenPGP
