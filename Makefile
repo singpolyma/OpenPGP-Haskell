@@ -1,15 +1,23 @@
 GHCFLAGS=-Wall -XNoCPP -fno-warn-name-shadowing -XHaskell98
 HLINTFLAGS=-XHaskell98 -XNoCPP -i 'Use camelCase' -i 'Use String' -i 'Use head' -i 'Use string literal' -i 'Use list comprehension' --utf8
 
-.PHONY: all cleas
+.PHONY: all clean doc install
 
-all: verify report.html README
+all: sign verify report.html doc dist/build/libHSopenpgp-0.1.a dist/openpgp-0.1.tar.gz
+
+install: dist/build/libHSopenpgp-0.1.a
+	cabal install
+
+sign: examples/sign.hs
+	ghc --make $(GHCFLAGS) -o $@ $^
 
 verify: examples/verify.hs
 	ghc --make $(GHCFLAGS) -o $@ $^
 
-report.html:
-	hlint $(HLINTFLAGS) --report Data examples
+report.html: examples/* Data/* Data/OpenPGP/*
+	hlint $(HLINTFLAGS) --report Data examples || true
+
+doc: dist/doc/html/openpgp/index.html README
 
 README: openpgp.cabal
 	tail -n+$$(( `grep -n ^description: $^ | head -n1 | cut -d: -f1` + 1 )) $^ > .$@
@@ -17,6 +25,22 @@ README: openpgp.cabal
 	printf ',s/        //g\n,s/^.$$//g\nw\nq\n' | ed $@
 	$(RM) .$@
 
+dist/doc/html/openpgp/index.html: dist/setup-config Data/OpenPGP.hs Data/OpenPGP/Crypto.hs
+	cabal haddock --hyperlink-source
+
+dist/setup-config:
+	cabal configure
+
 clean:
 	find -name '*.o' -o -name '*.hi' | xargs $(RM)
-	$(RM) verify
+	$(RM) sign verify
+	$(RM) -r dist
+
+# The following need to be changed on version change
+
+dist/build/libHSopenpgp-0.1.a: openpgp.cabal dist/setup-config Data/BaseConvert.hs Data/OpenPGP.hs Data/OpenPGP/Crypto.hs
+	cabal build
+
+dist/openpgp-0.1.tar.gz: openpgp.cabal dist/setup-config Data/BaseConvert.hs Data/OpenPGP.hs Data/OpenPGP/Crypto.hs README
+	cabal check
+	cabal sdist
