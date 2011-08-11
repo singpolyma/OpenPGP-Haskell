@@ -537,7 +537,7 @@ instance Binary SignatureSubpacket where
 				return len
 		tag <- get :: Get Word8
 		-- This forces the whole packet to be consumed
-		packet <- getLazyByteString len
+		packet <- getLazyByteString (len-1)
 		return $ runGet (parse_signature_subpacket tag) packet
 
 -- | Find the keyid that issued a SignaturePacket
