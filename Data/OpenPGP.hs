@@ -403,6 +403,15 @@ fingerprint_material (PublicKeyPacket {version = 4,
 	]
 	where material = LZ.concat $
 		map (\f -> encode (key ! f)) (public_key_fields algorithm)
+-- Proxy to make SecretKeyPacket work
+fingerprint_material (SecretKeyPacket {version = 4,
+                      timestamp = timestamp,
+                      key_algorithm = algorithm,
+                      key = key}) =
+	fingerprint_material PublicKeyPacket {version = 4,
+                      timestamp = timestamp,
+                      key_algorithm = algorithm,
+                      key = key}
 fingerprint_material p | version p `elem` [2, 3] = [n, e]
 	where n = LZ.drop 2 (encode (key p ! 'n'))
 	      e = LZ.drop 2 (encode (key p ! 'e'))
