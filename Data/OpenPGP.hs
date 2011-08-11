@@ -3,7 +3,7 @@
 -- The recommended way to import this module is:
 --
 -- > import qualified Data.OpenPGP as OpenPGP
-module Data.OpenPGP (Message(..), Packet(..), SignatureSubpacket(..), HashAlgorithm(..), KeyAlgorithm(..), CompressionAlgorithm(..), MPI(..), fingerprint_material, signatures_and_data, signature_issuer) where
+module Data.OpenPGP (Message(..), Packet(..), SignatureSubpacket(..), HashAlgorithm(..), KeyAlgorithm(..), CompressionAlgorithm(..), MPI(..), fingerprint_material, signatures_and_data, signature_issuer, calculate_signature_trailer) where
 
 import Control.Monad
 import Data.Bits
