@@ -2,4 +2,6 @@
 *.hi
 *.swp*
 verify
+sign
 dist/*
+report.html
