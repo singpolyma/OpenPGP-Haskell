@@ -8,7 +8,8 @@ and then defines instances of Data.Binary for each to facilitate
 encoding/decoding.
 
 There is also a wrapper around <http://hackage.haskell.org/package/Crypto>
-that currently does fingerprint generation and signature verification.
+that currently does fingerprint generation, signature generation, and
+signature verification (for RSA keys only).
 
 It is intended that you use qualified imports with this library.  If importing
 both modules, something like this will do:
