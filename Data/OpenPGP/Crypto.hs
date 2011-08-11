@@ -4,13 +4,15 @@
 -- The recommended way to import this module is:
 --
 -- > import qualified Data.OpenPGP.Crypto as OpenPGP
-module Data.OpenPGP.Crypto (verify, fingerprint) where
+module Data.OpenPGP.Crypto (sign, verify, fingerprint) where
 
 import Data.Word
+import Data.List (find)
 import Data.Map ((!))
 import qualified Data.ByteString.Lazy as LZ
 
 import Data.Binary
+import Codec.Utils (fromOctets)
 import qualified Codec.Encryption.RSA as RSA
 import qualified Data.Digest.MD5 as MD5
 import qualified Data.Digest.SHA1 as SHA1
@@ -91,3 +93,48 @@ verify keys message sigidx =
 	sig = sigs !! sigidx
 	(sigs, (OpenPGP.LiteralDataPacket {OpenPGP.content = dta}):_) =
 		OpenPGP.signatures_and_data message
+
+-- | Sign a message.  Only supports RSA keys for now.
+sign :: OpenPGP.Message    -- ^ SecretKeys, one of which will be used
+        -> OpenPGP.Message -- ^ Message containing LiteralData to sign
+        -> OpenPGP.HashAlgorithm -- ^ HashAlgorithm to use is signature
+        -> String  -- ^ KeyID of key to choose or @[]@ for first
+        -> Integer -- ^ Timestamp to put in signature
+        -> OpenPGP.Message
+sign keys message hsh keyid timestamp =
+	OpenPGP.Message $ (sig' {
+		OpenPGP.signature = OpenPGP.MPI $ toNum $ reverse final,
+		OpenPGP.hash_head = toNum $ take 2 final
+	}):m
+	where
+	-- toNum has explicit param so that it can remain polymorphic
+	toNum l = fromOctets (256::Integer) l
+	final   = RSA.decrypt (n, d) encoded
+	encoded = emsa_pkcs1_v1_5_encode dta (length n) hsh
+	(n, d)  = (keyfield_as_octets k 'n', keyfield_as_octets k 'd')
+	dta     = LZ.unpack $ LZ.append
+		(OpenPGP.content dataP) (OpenPGP.trailer sig')
+	sig'    = sig {
+		OpenPGP.trailer = OpenPGP.calculate_signature_trailer sig
+	}
+	sig     = OpenPGP.SignaturePacket {
+		OpenPGP.version = 4,
+		OpenPGP.key_algorithm = OpenPGP.RSA,
+		OpenPGP.hash_algorithm = hsh,
+		OpenPGP.signature_type = stype,
+		OpenPGP.hashed_subpackets = [
+			OpenPGP.SignatureCreationTimePacket $ fromIntegral timestamp,
+			OpenPGP.IssuerPacket keyid'
+		],
+		OpenPGP.unhashed_subpackets = [],
+		OpenPGP.signature = undefined,
+		OpenPGP.trailer = undefined,
+		OpenPGP.hash_head = undefined
+	}
+	keyid'  = reverse $ take 16 $ reverse $ fingerprint k
+	stype   = if OpenPGP.format dataP == 'b' then 0x00 else 0x01
+	Just k  = find_key keys keyid
+	Just dataP = find isLiteralData m
+	OpenPGP.Message m = message
+	isLiteralData (OpenPGP.LiteralDataPacket {}) = True
+	isLiteralData _                              = False
