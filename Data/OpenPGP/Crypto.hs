@@ -78,7 +78,7 @@ emsa_pkcs1_v1_5_encode m emLen algo =
 
 -- | Verify a message signature.  Only supports RSA keys for now.
 verify :: OpenPGP.Message    -- ^ Keys that may have made the signature
-          -> OpenPGP.Message -- ^ Message containing data or key to sign, and optional signature packet
+          -> OpenPGP.Message -- ^ LiteralData message to verify
           -> Int             -- ^ Index of signature to verify (0th, 1st, etc)
           -> Bool
 verify keys message sigidx =
@@ -97,7 +97,7 @@ verify keys message sigidx =
 
 -- | Sign data or key/userID pair.  Only supports RSA keys for now.
 sign :: OpenPGP.Message    -- ^ SecretKeys, one of which will be used
-        -> OpenPGP.Message -- ^ Message containing LiteralData to sign
+        -> OpenPGP.Message -- ^ Message containing data or key to sign, and optional signature packet
         -> OpenPGP.HashAlgorithm -- ^ HashAlgorithm to use is signature
         -> String  -- ^ KeyID of key to choose or @[]@ for first
         -> Integer -- ^ Timestamp for signature (unless sig supplied)
