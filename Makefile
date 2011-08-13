@@ -3,9 +3,9 @@ HLINTFLAGS=-XHaskell98 -XNoCPP -i 'Use camelCase' -i 'Use String' -i 'Use head' 
 
 .PHONY: all clean doc install
 
-all: sign verify keygen report.html doc dist/build/libHSopenpgp-0.2.a dist/openpgp-0.2.tar.gz
+all: sign verify keygen report.html doc dist/build/libHSopenpgp-0.3.a dist/openpgp-0.3.tar.gz
 
-install: dist/build/libHSopenpgp-0.2.a
+install: dist/build/libHSopenpgp-0.3.a
 	cabal install
 
 sign: examples/sign.hs Data/*.hs Data/OpenPGP/*.hs
@@ -41,9 +41,9 @@ clean:
 
 # The following need to be changed on version change
 
-dist/build/libHSopenpgp-0.2.a: openpgp.cabal dist/setup-config Data/BaseConvert.hs Data/OpenPGP.hs Data/OpenPGP/Crypto.hs
+dist/build/libHSopenpgp-0.3.a: openpgp.cabal dist/setup-config Data/BaseConvert.hs Data/OpenPGP.hs Data/OpenPGP/Crypto.hs
 	cabal build
 
-dist/openpgp-0.2.tar.gz: openpgp.cabal dist/setup-config Data/BaseConvert.hs Data/OpenPGP.hs Data/OpenPGP/Crypto.hs README
+dist/openpgp-0.3.tar.gz: openpgp.cabal dist/setup-config Data/BaseConvert.hs Data/OpenPGP.hs Data/OpenPGP/Crypto.hs README
 	cabal check
 	cabal sdist
