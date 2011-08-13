@@ -513,12 +513,12 @@ instance Binary MPI where
 			+ floor (logBase (2::Double) $ fromIntegral (bytes `LZ.index` 0))
 			+ 1 :: Word16)
 		putLazyByteString bytes
-		where bytes = LZ.unfoldr (\x -> if x == 0 then Nothing
+		where bytes = LZ.reverse $ LZ.unfoldr (\x -> if x == 0 then Nothing
 			else Just (fromIntegral x, x `shiftR` 8)) i
 	get = do
 		length <- fmap fromIntegral (get :: Get Word16)
 		bytes <- getLazyByteString ((length + 7) `div` 8)
-		return (MPI (LZ.foldr (\b a ->
+		return (MPI (LZ.foldl (\a b ->
 			a `shiftL` 8 .|. fromIntegral b) 0 bytes))
 
 data SignatureSubpacket =
