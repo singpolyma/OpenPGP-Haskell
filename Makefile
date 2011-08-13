@@ -3,18 +3,21 @@ HLINTFLAGS=-XHaskell98 -XNoCPP -i 'Use camelCase' -i 'Use String' -i 'Use head' 
 
 .PHONY: all clean doc install
 
-all: sign verify report.html doc dist/build/libHSopenpgp-0.2.a dist/openpgp-0.2.tar.gz
+all: sign verify keygen report.html doc dist/build/libHSopenpgp-0.2.a dist/openpgp-0.2.tar.gz
 
 install: dist/build/libHSopenpgp-0.2.a
 	cabal install
 
-sign: examples/sign.hs
+sign: examples/sign.hs Data/*.hs Data/OpenPGP/*.hs
 	ghc --make $(GHCFLAGS) -o $@ $^
 
-verify: examples/verify.hs
+verify: examples/verify.hs Data/*.hs Data/OpenPGP/*.hs
 	ghc --make $(GHCFLAGS) -o $@ $^
 
-report.html: examples/* Data/* Data/OpenPGP/*
+keygen: examples/keygen.hs Data/*.hs Data/OpenPGP/*.hs
+	ghc --make $(GHCFLAGS) -o $@ $^
+
+report.html: examples/*.hs Data/*.hs Data/OpenPGP/*.hs
 	hlint $(HLINTFLAGS) --report Data examples || true
 
 doc: dist/doc/html/openpgp/index.html README

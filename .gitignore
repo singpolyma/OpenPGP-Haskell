@@ -3,5 +3,6 @@
 *.swp*
 verify
 sign
+keygen
 dist/*
 report.html
