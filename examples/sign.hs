@@ -14,8 +14,10 @@ main = do
 	time <- getClockTime
 	let TOD t _ = time
 	keys <- decodeFile (argv !! 0)
+	let dataPacket = OpenPGP.LiteralDataPacket 'u' "t.txt"
+			(fromIntegral t) (LZ.fromString "This is a message.")
 	let message = OpenPGP.Message [
-		OpenPGP.LiteralDataPacket 'u' "t.txt" (fromIntegral t)
-			(LZ.fromString "This is a message.") ]
-	LZ.putStr $ encode $
-		OpenPGP.sign keys message OpenPGP.SHA256 [] (fromIntegral t)
+		OpenPGP.sign keys (OpenPGP.Message [dataPacket])
+			OpenPGP.SHA256 [] (fromIntegral t),
+		dataPacket]
+	LZ.putStr $ encode message

@@ -10,6 +10,7 @@ import Data.Word
 import Data.List (find)
 import Data.Map ((!))
 import qualified Data.ByteString.Lazy as LZ
+import qualified Data.ByteString.Lazy.UTF8 as LZ (fromString)
 
 import Data.Binary
 import Codec.Utils (fromOctets)
@@ -77,7 +78,7 @@ emsa_pkcs1_v1_5_encode m emLen algo =
 
 -- | Verify a message signature.  Only supports RSA keys for now.
 verify :: OpenPGP.Message    -- ^ Keys that may have made the signature
-          -> OpenPGP.Message -- ^ Message containing data and signature packet
+          -> OpenPGP.Message -- ^ Message containing data or key to sign, and optional signature packet
           -> Int             -- ^ Index of signature to verify (0th, 1st, etc)
           -> Bool
 verify keys message sigidx =
@@ -94,47 +95,79 @@ verify keys message sigidx =
 	(sigs, (OpenPGP.LiteralDataPacket {OpenPGP.content = dta}):_) =
 		OpenPGP.signatures_and_data message
 
--- | Sign a message.  Only supports RSA keys for now.
+-- | Sign data or key/userID pair.  Only supports RSA keys for now.
 sign :: OpenPGP.Message    -- ^ SecretKeys, one of which will be used
         -> OpenPGP.Message -- ^ Message containing LiteralData to sign
         -> OpenPGP.HashAlgorithm -- ^ HashAlgorithm to use is signature
         -> String  -- ^ KeyID of key to choose or @[]@ for first
-        -> Integer -- ^ Timestamp to put in signature
-        -> OpenPGP.Message
+        -> Integer -- ^ Timestamp for signature (unless sig supplied)
+        -> OpenPGP.Packet
 sign keys message hsh keyid timestamp =
-	OpenPGP.Message $ (sig' {
-		OpenPGP.signature = OpenPGP.MPI $ toNum $ reverse final,
+	sig {
+		OpenPGP.signature = OpenPGP.MPI $ toNum final,
 		OpenPGP.hash_head = toNum $ take 2 final
-	}):m
+	}
 	where
 	-- toNum has explicit param so that it can remain polymorphic
 	toNum l = fromOctets (256::Integer) l
-	final   = RSA.decrypt (n, d) encoded
+	final   = dropWhile (==0) $ RSA.decrypt (n, d) encoded
 	encoded = emsa_pkcs1_v1_5_encode dta (length n) hsh
 	(n, d)  = (keyfield_as_octets k 'n', keyfield_as_octets k 'd')
-	dta     = LZ.unpack $ LZ.append
-		(OpenPGP.content dataP) (OpenPGP.trailer sig')
-	sig'    = sig {
-		OpenPGP.trailer = OpenPGP.calculate_signature_trailer sig
-	}
-	sig     = OpenPGP.SignaturePacket {
-		OpenPGP.version = 4,
+	dta     = LZ.unpack $ case signOver of {
+		OpenPGP.LiteralDataPacket {OpenPGP.content = c} -> c;
+		_ -> LZ.concat $ OpenPGP.fingerprint_material signOver ++ [
+			LZ.singleton 0xB4,
+			encode (fromIntegral (length firstUserID) :: Word32),
+			LZ.fromString firstUserID
+		]
+	} `LZ.append` OpenPGP.trailer sig
+	-- Always force key and hash algorithm
+	sig     = let s = (findSigOrDefault (find isSignature m)) {
 		OpenPGP.key_algorithm = OpenPGP.RSA,
-		OpenPGP.hash_algorithm = hsh,
-		OpenPGP.signature_type = stype,
+		OpenPGP.hash_algorithm = hsh
+	} in s { OpenPGP.trailer = OpenPGP.calculate_signature_trailer s }
+
+	-- Either a SignaturePacket was found, or we need to make one
+	findSigOrDefault (Just s) = s
+	findSigOrDefault Nothing  = OpenPGP.SignaturePacket {
+		OpenPGP.version = 4,
+		OpenPGP.key_algorithm = undefined,
+		OpenPGP.hash_algorithm = undefined,
+		OpenPGP.signature_type = defaultStype,
 		OpenPGP.hashed_subpackets = [
+			-- Do we really need to pass in timestamp just for the default?
 			OpenPGP.SignatureCreationTimePacket $ fromIntegral timestamp,
 			OpenPGP.IssuerPacket keyid'
-		],
+		] ++ (case signOver of
+			OpenPGP.LiteralDataPacket {} -> []
+			_ -> [] -- TODO: OpenPGP.KeyFlagsPacket [0x01, 0x02]
+		),
 		OpenPGP.unhashed_subpackets = [],
 		OpenPGP.signature = undefined,
 		OpenPGP.trailer = undefined,
 		OpenPGP.hash_head = undefined
 	}
+
 	keyid'  = reverse $ take 16 $ reverse $ fingerprint k
-	stype   = if OpenPGP.format dataP == 'b' then 0x00 else 0x01
 	Just k  = find_key keys keyid
-	Just dataP = find isLiteralData m
+
+	Just (OpenPGP.UserIDPacket firstUserID) = find isUserID m
+
+	defaultStype = case signOver of
+		OpenPGP.LiteralDataPacket {OpenPGP.format = f} ->
+			if f == 'b' then 0x00 else 0x01
+		_ -> 0x13
+
+	Just signOver = find isSignable m
 	OpenPGP.Message m = message
-	isLiteralData (OpenPGP.LiteralDataPacket {}) = True
-	isLiteralData _                              = False
+
+	isSignable (OpenPGP.LiteralDataPacket {}) = True
+	isSignable (OpenPGP.PublicKeyPacket {})   = True
+	isSignable (OpenPGP.SecretKeyPacket {})   = True
+	isSignable _                              = False
+
+	isSignature (OpenPGP.SignaturePacket {})  = True
+	isSignature _                             = False
+
+	isUserID (OpenPGP.UserIDPacket {})        = True
+	isUserID _                                = False
