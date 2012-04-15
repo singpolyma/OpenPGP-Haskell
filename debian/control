@@ -1,0 +1,124 @@
+Source: haskell-openpgp
+Priority: extra
+Section: haskell
+Maintainer: Stephen Paul Weber <singpolyma@singpolyma.net>
+Build-Depends: debhelper (>= 7.0),
+               haskell-devscripts (>= 0.8),
+               cdbs,
+               ghc,
+               ghc-prof,
+               libghc-crypto-dev,
+               libghc-crypto-prof,
+               libghc-binary-dev,
+               libghc-binary-prof,
+               libghc-bzlib-dev,
+               libghc-bzlib-prof,
+               libghc-utf8-string-dev,
+               libghc-utf8-string-prof,
+               libghc-zlib-dev,
+               libghc-zlib-prof
+Build-Depends-Indep: ghc-doc,
+                     libghc-crypto-doc,
+                     libghc-binary-doc,
+                     libghc-bzlib-doc,
+                     libghc-utf8-string-doc,
+                     libghc-zlib-doc
+Standards-Version: 3.9.1
+Homepage: http://github.com/singpolyma/OpenPGP-Haskell
+
+Package: libghc-openpgp-dev
+Architecture: any
+Depends: ${shlibs:Depends},
+         ${haskell:Depends},
+         ${misc:Depends}
+Recommends: ${haskell:Recommends}
+Suggests: ${haskell:Suggests}
+Provides: ${haskell:Provides}
+Description: Implementation of the OpenPGP message format
+ This is an OpenPGP library inspired by my work on OpenPGP libraries in
+ Ruby <https://github.com/singpolyma/openpgp>,
+ PHP <http://github.com/singpolyma/openpgp-php>,
+ and Python <https://github.com/singpolyma/OpenPGP-Python>.
+ .
+ It defines types to represent OpenPGP messages as a series of packets
+ and then defines instances of Data.Binary for each to facilitate
+ encoding/decoding.
+ .
+ There is also a wrapper around <http://hackage.haskell.org/package/Crypto>
+ that currently does fingerprint generation, signature generation, and
+ signature verification (for RSA keys only).
+ .
+ It is intended that you use qualified imports with this library.  If importing
+ both modules, something like this will do:
+ .
+ > import qualified Data.OpenPGP as OpenPGP
+ > import qualified Data.OpenPGP.Crypto as OpenPGP
+ .
+  Author: Stephen Paul Weber <singpolyma@singpolyma.net>
+  Upstream-Maintainer: Stephen Paul Weber <singpolyma@singpolyma.net>
+ .
+ This package contains the normal library files.
+
+Package: libghc-openpgp-prof
+Architecture: any
+Depends: ${haskell:Depends},
+         ${misc:Depends}
+Recommends: ${haskell:Recommends}
+Suggests: ${haskell:Suggests}
+Provides: ${haskell:Provides}
+Description: Implementation of the OpenPGP message format
+ This is an OpenPGP library inspired by my work on OpenPGP libraries in
+ Ruby <https://github.com/singpolyma/openpgp>,
+ PHP <http://github.com/singpolyma/openpgp-php>,
+ and Python <https://github.com/singpolyma/OpenPGP-Python>.
+ .
+ It defines types to represent OpenPGP messages as a series of packets
+ and then defines instances of Data.Binary for each to facilitate
+ encoding/decoding.
+ .
+ There is also a wrapper around <http://hackage.haskell.org/package/Crypto>
+ that currently does fingerprint generation, signature generation, and
+ signature verification (for RSA keys only).
+ .
+ It is intended that you use qualified imports with this library.  If importing
+ both modules, something like this will do:
+ .
+ > import qualified Data.OpenPGP as OpenPGP
+ > import qualified Data.OpenPGP.Crypto as OpenPGP
+ .
+  Author: Stephen Paul Weber <singpolyma@singpolyma.net>
+  Upstream-Maintainer: Stephen Paul Weber <singpolyma@singpolyma.net>
+ .
+ This package contains the libraries compiled with profiling enabled.
+
+Package: libghc-openpgp-doc
+Architecture: all
+Section: doc
+Depends: ${haskell:Depends},
+         ${misc:Depends}
+Recommends: ${haskell:Recommends}
+Suggests: ${haskell:Suggests}
+Description: Implementation of the OpenPGP message format
+ This is an OpenPGP library inspired by my work on OpenPGP libraries in
+ Ruby <https://github.com/singpolyma/openpgp>,
+ PHP <http://github.com/singpolyma/openpgp-php>,
+ and Python <https://github.com/singpolyma/OpenPGP-Python>.
+ .
+ It defines types to represent OpenPGP messages as a series of packets
+ and then defines instances of Data.Binary for each to facilitate
+ encoding/decoding.
+ .
+ There is also a wrapper around <http://hackage.haskell.org/package/Crypto>
+ that currently does fingerprint generation, signature generation, and
+ signature verification (for RSA keys only).
+ .
+ It is intended that you use qualified imports with this library.  If importing
+ both modules, something like this will do:
+ .
+ > import qualified Data.OpenPGP as OpenPGP
+ > import qualified Data.OpenPGP.Crypto as OpenPGP
+ .
+  Author: Stephen Paul Weber <singpolyma@singpolyma.net>
+  Upstream-Maintainer: Stephen Paul Weber <singpolyma@singpolyma.net>
+ .
+ This package contains the documentation files.

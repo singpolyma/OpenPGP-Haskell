@@ -6,3 +6,10 @@ sign
 keygen
 dist/*
 report.html
+dist-ghc/*
+build-*-stamp
+debian/files
+debian/hlibrary.setup
+debian/libghc*
+debian/tmp*
+debian/dh_*

@@ -2,12 +2,14 @@ GHCFLAGS=-Wall -XNoCPP -fno-warn-name-shadowing -XHaskell98
 HLINTFLAGS=-XHaskell98 -XNoCPP -i 'Use camelCase' -i 'Use String' -i 'Use head' -i 'Use string literal' -i 'Use list comprehension' --utf8
 VERSION=0.3
 
-.PHONY: all clean doc install
+.PHONY: all clean doc install debian
 
 all: sign verify keygen report.html doc dist/build/libHSopenpgp-$(VERSION).a dist/openpgp-$(VERSION).tar.gz
 
 install: dist/build/libHSopenpgp-$(VERSION).a
 	cabal install
+
+debian: debian/control
 
 sign: examples/sign.hs Data/*.hs Data/OpenPGP/*.hs
 	ghc --make $(GHCFLAGS) -o $@ $^
@@ -39,6 +41,9 @@ clean:
 	find -name '*.o' -o -name '*.hi' | xargs $(RM)
 	$(RM) sign verify
 	$(RM) -r dist
+
+debian/control: openpgp.cabal
+	cabal-debian --update-debianization
 
 dist/build/libHSopenpgp-$(VERSION).a: openpgp.cabal dist/setup-config Data/BaseConvert.hs Data/OpenPGP.hs Data/OpenPGP/Crypto.hs
 	cabal build
