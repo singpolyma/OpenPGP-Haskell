@@ -72,7 +72,8 @@ data Packet =
 		timestamp::Word32,
 		content::LZ.ByteString
 	} |
-	UserIDPacket String
+	UserIDPacket String |
+	UnsupportedPacket Word8 LZ.ByteString
 	deriving (Show, Read, Eq)
 
 instance Binary Packet where
@@ -259,6 +260,7 @@ put_packet (LiteralDataPacket { format = format, filename = filename,
 	filename_l  = (fromIntegral $ LZ.length lz_filename) :: Word8
 	lz_filename = LZ.fromString filename
 put_packet (UserIDPacket txt) = (LZ.fromString txt, 13)
+put_packet (UnsupportedPacket tag bytes) = (bytes, fromIntegral tag)
 put_packet _ = error "Unsupported Packet version or type in put_packet."
 
 parse_packet :: Word8 -> Get Packet
@@ -390,8 +392,8 @@ parse_packet 11 = do
 -- UserIDPacket, http://tools.ietf.org/html/rfc4880#section-5.11
 parse_packet 13 =
 	fmap (UserIDPacket . LZ.toString) getRemainingLazyByteString
--- Fail nicely for unimplemented packets
-parse_packet x = fail $ "Unimplemented OpenPGP packet tag " ++ show x ++ "."
+-- Represent unsupported packets as their tag and literal bytes
+parse_packet tag = fmap (UnsupportedPacket tag) getRemainingLazyByteString
 
 -- | Helper method for fingerprints and such
 fingerprint_material :: Packet -> [LZ.ByteString]
@@ -547,7 +549,8 @@ instance Binary MPI where
 
 data SignatureSubpacket =
 	SignatureCreationTimePacket Word32 |
-	IssuerPacket String
+	IssuerPacket String |
+	UnsupportedSignatureSubpacket Word8 LZ.ByteString
 	deriving (Show, Read, Eq)
 
 instance Binary SignatureSubpacket where
@@ -590,6 +593,8 @@ put_signature_subpacket (SignatureCreationTimePacket time) =
 	(encode time, 2)
 put_signature_subpacket (IssuerPacket keyid) =
 	(encode (BaseConvert.toNum 16 keyid :: Word64), 16)
+put_signature_subpacket (UnsupportedSignatureSubpacket tag bytes) =
+	(bytes, tag)
 
 get_signature_subpackets :: Get [SignatureSubpacket]
 get_signature_subpackets = do
@@ -607,9 +612,9 @@ parse_signature_subpacket  2 = fmap SignatureCreationTimePacket get
 parse_signature_subpacket 16 = do
 	keyid <- get :: Get Word64
 	return $ IssuerPacket (BaseConvert.toString 16 keyid)
--- Fail nicely for unimplemented packets
-parse_signature_subpacket x =
-	fail $ "Unimplemented OpenPGP signature subpacket tag " ++ show x ++ "."
+-- Represent unsupported packets as their tag and literal bytes
+parse_signature_subpacket tag =
+	fmap (UnsupportedSignatureSubpacket tag) getRemainingLazyByteString
 
 decode_s2k_count :: Word8 -> Word32
 decode_s2k_count c =  (16 + (fromIntegral c .&. 15)) `shiftL`
