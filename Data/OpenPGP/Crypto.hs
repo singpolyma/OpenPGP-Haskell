@@ -101,7 +101,7 @@ verify keys message sigidx =
 -- | Sign data or key/userID pair.  Only supports RSA keys for now.
 sign :: OpenPGP.Message    -- ^ SecretKeys, one of which will be used
         -> OpenPGP.Message -- ^ Message containing data or key to sign, and optional signature packet
-        -> OpenPGP.HashAlgorithm -- ^ HashAlgorithm to use is signature
+        -> OpenPGP.HashAlgorithm -- ^ HashAlgorithm to use in signature
         -> String  -- ^ KeyID of key to choose or @[]@ for first
         -> Integer -- ^ Timestamp for signature (unless sig supplied)
         -> OpenPGP.Packet
