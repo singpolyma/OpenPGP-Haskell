@@ -2,14 +2,17 @@ GHCFLAGS=-Wall -XNoCPP -fno-warn-name-shadowing -XHaskell98
 HLINTFLAGS=-XHaskell98 -XNoCPP -i 'Use camelCase' -i 'Use String' -i 'Use head' -i 'Use string literal' -i 'Use list comprehension' --utf8
 VERSION=0.3
 
-.PHONY: all clean doc install debian
+.PHONY: all clean doc install debian test
 
-all: sign verify keygen report.html doc dist/build/libHSopenpgp-$(VERSION).a dist/openpgp-$(VERSION).tar.gz
+all: sign verify keygen test report.html doc dist/build/libHSopenpgp-$(VERSION).a dist/openpgp-$(VERSION).tar.gz
 
 install: dist/build/libHSopenpgp-$(VERSION).a
 	cabal install
 
 debian: debian/control
+
+test: tests/suite
+	tests/suite
 
 sign: examples/sign.hs Data/*.hs Data/OpenPGP/*.hs
 	ghc --make $(GHCFLAGS) -o $@ $^
@@ -20,7 +23,10 @@ verify: examples/verify.hs Data/*.hs Data/OpenPGP/*.hs
 keygen: examples/keygen.hs Data/*.hs Data/OpenPGP/*.hs
 	ghc --make $(GHCFLAGS) -o $@ $^
 
-report.html: examples/*.hs Data/*.hs Data/OpenPGP/*.hs
+tests/suite: tests/suite.hs
+	ghc --make $(GHCFLAGS) -o $@ $^
+
+report.html: examples/*.hs Data/*.hs Data/OpenPGP/*.hs tests/*.hs
 	-hlint $(HLINTFLAGS) --report Data examples
 
 doc: dist/doc/html/openpgp/index.html README
@@ -39,7 +45,7 @@ dist/setup-config: openpgp.cabal
 
 clean:
 	find -name '*.o' -o -name '*.hi' | xargs $(RM)
-	$(RM) sign verify keygen
+	$(RM) sign verify keygen tests/suite
 	$(RM) -r dist dist-ghc
 
 debian/control: openpgp.cabal

@@ -4,6 +4,7 @@
 verify
 sign
 keygen
+tests/suite
 dist/*
 report.html
 dist-ghc/*
