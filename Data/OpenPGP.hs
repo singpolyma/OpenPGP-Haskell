@@ -83,7 +83,8 @@ instance Binary Packet where
 		put (255 :: Word8)
 		put ((fromIntegral $ LZ.length body) :: Word32)
 		putLazyByteString body
-		where (body, tag) = put_packet p
+		where
+		(body, tag) = put_packet p
 	get = do
 		tag <- get :: Get Word8
 		let (t, l) =
@@ -162,7 +163,8 @@ signature_packet_start (SignaturePacket {
 		encode ((fromIntegral $ LZ.length hashed_subs) :: Word16),
 		hashed_subs
 	]
-	where hashed_subs = LZ.concat $ map encode hashed_subpackets
+	where
+	hashed_subs = LZ.concat $ map encode hashed_subpackets
 signature_packet_start _ =
 	error "Trying to get start of signature packet for non signature packet."
 
@@ -192,8 +194,9 @@ put_packet (SignaturePacket { version = 4,
 	            encode (fromIntegral $ LZ.length unhashed :: Word16),
 	            unhashed,
 	            encode hash_head, encode signature ], 2)
-	where hashed   = LZ.concat $ map encode hashed_subpackets
-	      unhashed = LZ.concat $ map encode unhashed_subpackets
+	where
+	hashed   = LZ.concat $ map encode hashed_subpackets
+	unhashed = LZ.concat $ map encode unhashed_subpackets
 put_packet (OnePassSignaturePacket { version = version,
                                      signature_type = signature_type,
                                      hash_algorithm = hash_algorithm,
@@ -228,14 +231,13 @@ put_packet (SecretKeyPacket { version = version, timestamp = timestamp,
 			LZ.foldl (\c i -> (c + fromIntegral i) `mod` 65536)
 			(0::Integer) (LZ.concat s) :: Word16)]), 5)
 	where
-	p = fst (put_packet $
-		PublicKeyPacket version timestamp algorithm key
+	p = fst (put_packet $ PublicKeyPacket version timestamp algorithm key
 		:: (LZ.ByteString, Integer)) -- Supress warning
 	s = map (encode . (key !)) (secret_key_fields algorithm)
 put_packet (PublicKeyPacket { version = 4, timestamp = timestamp,
                               key_algorithm = algorithm, key = key }) =
 	(LZ.concat $ [LZ.singleton 4, encode timestamp, encode algorithm] ++
-	            map (encode . (key !)) (public_key_fields algorithm), 6)
+		map (encode . (key !)) (public_key_fields algorithm), 6)
 put_packet (CompressedDataPacket { compression_algorithm = algorithm,
                                    message = message }) =
 	(LZ.append (encode algorithm) $ compress $ encode message, 8)
@@ -401,8 +403,9 @@ fingerprint_material (PublicKeyPacket {version = 4,
 		LZ.singleton 4, encode timestamp, encode algorithm,
 		material
 	]
-	where material = LZ.concat $
-		map (\f -> encode (key ! f)) (public_key_fields algorithm)
+	where
+	material =
+		LZ.concat $ map (encode . (key !)) (public_key_fields algorithm)
 -- Proxy to make SecretKeyPacket work
 fingerprint_material (SecretKeyPacket {version = 4,
                       timestamp = timestamp,
@@ -413,8 +416,9 @@ fingerprint_material (SecretKeyPacket {version = 4,
                       key_algorithm = algorithm,
                       key = key}
 fingerprint_material p | version p `elem` [2, 3] = [n, e]
-	where n = LZ.drop 2 (encode (key p ! 'n'))
-	      e = LZ.drop 2 (encode (key p ! 'e'))
+	where
+	n = LZ.drop 2 (encode (key p ! 'n'))
+	e = LZ.drop 2 (encode (key p ! 'e'))
 fingerprint_material _ =
 	error "Unsupported Packet version or type in fingerprint_material."
 
@@ -489,11 +493,10 @@ instance Binary Message where
 		put (Message xs)
 	get = do
 		done <- isEmpty
-		if done then return (Message []) else do {
-			next_packet <- get :: Get Packet;
-			(Message tail) <- get :: Get Message;
-			return (Message (next_packet:tail));
-		}
+		if done then return (Message []) else do
+			next_packet <- get
+			(Message tail) <- get
+			return (Message (next_packet:tail))
 
 -- | Extract all signature and data packets from a 'Message'
 signatures_and_data :: Message -> ([Packet], [Packet])
@@ -501,10 +504,11 @@ signatures_and_data (Message ((CompressedDataPacket {message = m}):_)) =
 	signatures_and_data m
 signatures_and_data (Message lst) =
 	(filter isSig lst, filter isDta lst)
-	where isSig (SignaturePacket {}) = True
-	      isSig _ = False
-	      isDta (LiteralDataPacket {}) = True
-	      isDta _ = False
+	where
+	isSig (SignaturePacket {}) = True
+	isSig _ = False
+	isDta (LiteralDataPacket {}) = True
+	isDta _ = False
 
 newtype MPI = MPI Integer deriving (Show, Read, Eq, Ord)
 instance Binary MPI where
@@ -513,8 +517,11 @@ instance Binary MPI where
 			+ floor (logBase (2::Double) $ fromIntegral (bytes `LZ.index` 0))
 			+ 1 :: Word16)
 		putLazyByteString bytes
-		where bytes = LZ.reverse $ LZ.unfoldr (\x -> if x == 0 then Nothing
-			else Just (fromIntegral x, x `shiftR` 8)) i
+		where
+		bytes = LZ.reverse $ LZ.unfoldr (\x ->
+				if x == 0 then Nothing else
+					Just (fromIntegral x, x `shiftR` 8)
+			) i
 	get = do
 		length <- fmap fromIntegral (get :: Get Word16)
 		bytes <- getLazyByteString ((length + 7) `div` 8)
@@ -533,7 +540,8 @@ instance Binary SignatureSubpacket where
 		put (fromIntegral (LZ.length body) + 1 :: Word32)
 		put tag
 		putLazyByteString body
-		where (body, tag) = put_signature_subpacket p
+		where
+		(body, tag) = put_signature_subpacket p
 	get = do
 		len <- fmap fromIntegral (get :: Get Word8)
 		len <- case len of
