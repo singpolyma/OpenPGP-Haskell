@@ -241,11 +241,13 @@ put_packet (PublicKeyPacket { version = 4, timestamp = timestamp,
 put_packet (CompressedDataPacket { compression_algorithm = algorithm,
                                    message = message }) =
 	(LZ.append (encode algorithm) $ compress $ encode message, 8)
-	where compress = case algorithm of
+	where
+	compress = case algorithm of
 		Uncompressed -> id
-		ZIP -> Zip.compress
-		ZLIB -> Zlib.compress
-		BZip2 -> BZip2.compress
+		ZIP          -> Zip.compress
+		ZLIB         -> Zlib.compress
+		BZip2        -> BZip2.compress
+		x            -> error ("No implementation for " ++ show x)
 put_packet (LiteralDataPacket { format = format, filename = filename,
                                 timestamp = timestamp, content = content
                               }) =
@@ -365,9 +367,10 @@ parse_packet  8 = do
 	message <- getRemainingLazyByteString
 	let decompress = case algorithm of
 		Uncompressed -> id
-		ZIP -> Zip.decompress
-		ZLIB -> Zlib.decompress
-		BZip2 -> BZip2.decompress
+		ZIP          -> Zip.decompress
+		ZLIB         -> Zlib.decompress
+		BZip2        -> BZip2.decompress
+		x            -> error ("No implementation for " ++ show x)
 	return CompressedDataPacket {
 		compression_algorithm = algorithm,
 		message = runGet (get :: Get Message) (decompress message)
@@ -422,67 +425,82 @@ fingerprint_material p | version p `elem` [2, 3] = [n, e]
 fingerprint_material _ =
 	error "Unsupported Packet version or type in fingerprint_material."
 
-data HashAlgorithm = MD5 | SHA1 | RIPEMD160 | SHA256 | SHA384 | SHA512 | SHA224
+enum_to_word8 :: (Enum a) => a -> Word8
+enum_to_word8 = fromIntegral . fromEnum
+
+enum_from_word8 :: (Enum a) => Word8 -> a
+enum_from_word8 = toEnum . fromIntegral
+
+data HashAlgorithm = MD5 | SHA1 | RIPEMD160 | SHA256 | SHA384 | SHA512 | SHA224 | HashAlgorithm Word8
 	deriving (Show, Read, Eq)
+
+instance Enum HashAlgorithm where
+	toEnum 01 = MD5
+	toEnum 02 = SHA1
+	toEnum 03 = RIPEMD160
+	toEnum 08 = SHA256
+	toEnum 09 = SHA384
+	toEnum 10 = SHA512
+	toEnum 11 = SHA224
+	toEnum x  = HashAlgorithm $ fromIntegral x
+	fromEnum MD5       = 01
+	fromEnum SHA1      = 02
+	fromEnum RIPEMD160 = 03
+	fromEnum SHA256    = 08
+	fromEnum SHA384    = 09
+	fromEnum SHA512    = 10
+	fromEnum SHA224    = 11
+	fromEnum (HashAlgorithm x) = fromIntegral x
+
 instance Binary HashAlgorithm where
-	put MD5       = put (01 :: Word8)
-	put SHA1      = put (02 :: Word8)
-	put RIPEMD160 = put (03 :: Word8)
-	put SHA256    = put (08 :: Word8)
-	put SHA384    = put (09 :: Word8)
-	put SHA512    = put (10 :: Word8)
-	put SHA224    = put (11 :: Word8)
-	get = do
-		tag <- get :: Get Word8
-		case tag of
-			01 -> return MD5
-			02 -> return SHA1
-			03 -> return RIPEMD160
-			08 -> return SHA256
-			09 -> return SHA384
-			10 -> return SHA512
-			11 -> return SHA224
-			x  -> fail $ "Unknown HashAlgorithm " ++ show x ++ "."
+	put = put . enum_to_word8
+	get = fmap enum_from_word8 get
 
-data KeyAlgorithm = RSA | RSA_E | RSA_S | ELGAMAL | DSA | ECC | ECDSA | DH
+data KeyAlgorithm = RSA | RSA_E | RSA_S | ELGAMAL | DSA | ECC | ECDSA | DH | KeyAlgorithm Word8
 	deriving (Show, Read, Eq)
+
+instance Enum KeyAlgorithm where
+	toEnum 01 = RSA
+	toEnum 02 = RSA_E
+	toEnum 03 = RSA_S
+	toEnum 16 = ELGAMAL
+	toEnum 17 = DSA
+	toEnum 18 = ECC
+	toEnum 19 = ECDSA
+	toEnum 21 = DH
+	toEnum x  = KeyAlgorithm $ fromIntegral x
+	fromEnum RSA     = 01
+	fromEnum RSA_E   = 02
+	fromEnum RSA_S   = 03
+	fromEnum ELGAMAL = 16
+	fromEnum DSA     = 17
+	fromEnum ECC     = 18
+	fromEnum ECDSA   = 19
+	fromEnum DH      = 21
+	fromEnum (KeyAlgorithm x) = fromIntegral x
+
 instance Binary KeyAlgorithm where
-	put RSA     = put (01 :: Word8)
-	put RSA_E   = put (02 :: Word8)
-	put RSA_S   = put (03 :: Word8)
-	put ELGAMAL = put (16 :: Word8)
-	put DSA     = put (17 :: Word8)
-	put ECC     = put (18 :: Word8)
-	put ECDSA   = put (19 :: Word8)
-	put DH      = put (21 :: Word8)
-	get = do
-		tag <- get :: Get Word8
-		case tag of
-			01 -> return RSA
-			02 -> return RSA_E
-			03 -> return RSA_S
-			16 -> return ELGAMAL
-			17 -> return DSA
-			18 -> return ECC
-			19 -> return ECDSA
-			21 -> return DH
-			x  -> fail $ "Unknown KeyAlgorithm " ++ show x ++ "."
+	put = put . enum_to_word8
+	get = fmap enum_from_word8 get
 
-data CompressionAlgorithm = Uncompressed | ZIP | ZLIB | BZip2
+data CompressionAlgorithm = Uncompressed | ZIP | ZLIB | BZip2 | CompressionAlgorithm Word8
 	deriving (Show, Read, Eq)
+
+instance Enum CompressionAlgorithm where
+	toEnum 0 = Uncompressed
+	toEnum 1 = ZIP
+	toEnum 2 = ZLIB
+	toEnum 3 = BZip2
+	toEnum x = CompressionAlgorithm $ fromIntegral x
+	fromEnum Uncompressed = 0
+	fromEnum ZIP          = 1
+	fromEnum ZLIB         = 2
+	fromEnum BZip2        = 3
+	fromEnum (CompressionAlgorithm x) = fromIntegral x
+
 instance Binary CompressionAlgorithm where
-	put Uncompressed = put (0 :: Word8)
-	put ZIP          = put (1 :: Word8)
-	put ZLIB         = put (2 :: Word8)
-	put BZip2        = put (3 :: Word8)
-	get = do
-		tag <- get :: Get Word8
-		case tag of
-			0 -> return Uncompressed
-			1 -> return ZIP
-			2 -> return ZLIB
-			3 -> return BZip2
-			x  -> fail $ "Unknown CompressionAlgorithm " ++ show x ++ "."
+	put = put . enum_to_word8
+	get = fmap enum_from_word8 get
 
 -- A message is encoded as a list that takes the entire file
 newtype Message = Message [Packet] deriving (Show, Read, Eq)
@@ -496,7 +514,7 @@ instance Binary Message where
 		if done then return (Message []) else do
 			next_packet <- get
 			(Message tail) <- get
-			return (Message (next_packet:tail))
+			return $ Message (next_packet:tail)
 
 -- | Extract all signature and data packets from a 'Message'
 signatures_and_data :: Message -> ([Packet], [Packet])
