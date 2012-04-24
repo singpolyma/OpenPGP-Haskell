@@ -60,7 +60,7 @@ data Packet =
 		s2k_salt::Word64,
 		s2k_count::Word8,
 		encrypted_data::LZ.ByteString,
-		private_hash::LZ.ByteString
+		private_hash::Maybe LZ.ByteString -- the hash may be in the encrypted data
 	} |
 	CompressedDataPacket {
 		compression_algorithm::CompressionAlgorithm,
@@ -223,13 +223,14 @@ put_packet (SecretKeyPacket { version = version, timestamp = timestamp,
 	else []) ++
 	(if s2k_useage > 0 then
 		[encrypted_data]
-	else s) ++
-	(if s2k_useage == 254 then
-		[LZ.replicate 20 0] -- TODO SHA1 Checksum
-	else
-		[encode (fromIntegral $
-			LZ.foldl (\c i -> (c + fromIntegral i) `mod` 65536)
-			(0::Integer) (LZ.concat s) :: Word16)]), 5)
+	else s ++
+		-- XXX: Checksum is part of encrypted_data for V4 ONLY
+		if s2k_useage == 254 then
+			[LZ.replicate 20 0] -- TODO SHA1 Checksum
+		else
+			[encode (fromIntegral $
+				LZ.foldl (\c i -> (c + fromIntegral i) `mod` 65536)
+				(0::Integer) (LZ.concat s) :: Word16)]), 5)
 	where
 	p = fst (put_packet $ PublicKeyPacket version timestamp algorithm key
 		:: (LZ.ByteString, Integer)) -- Supress warning
@@ -337,13 +338,13 @@ parse_packet  5 = do
 			return (k undefined undefined undefined undefined undefined)
 	if s2k_useage > 0 then do {
 		encrypted <- getRemainingLazyByteString;
-		return (k' encrypted undefined)
+		return (k' encrypted Nothing)
 	} else do
 		key <- foldM (\m f -> do
 			mpi <- get :: Get MPI
 			return $ Map.insert f mpi m) key (secret_key_fields algorithm)
 		private_hash <- getRemainingLazyByteString
-		return ((k' undefined private_hash) {key = key})
+		return ((k' undefined (Just private_hash)) {key = key})
 -- PublicKeyPacket, http://tools.ietf.org/html/rfc4880#section-5.5.2
 parse_packet  6 = do
 	version <- get :: Get Word8
