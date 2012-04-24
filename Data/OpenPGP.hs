@@ -622,7 +622,7 @@ encode_s2k_count iterations
 	| otherwise = result
 	where
 	result = fromIntegral $ (fromIntegral c `shiftL` 4) .|. (count - 16)
-	(count, c) = encode_s2k_count' (iterations `shiftR` 6) 0
+	(count, c) = encode_s2k_count' (iterations `shiftR` 6) (0::Word8)
 	encode_s2k_count' count c
 		| count < 32 = (count, c)
 		| otherwise = encode_s2k_count' (count `shiftR` 1) (c+1)
