@@ -3,7 +3,7 @@
 -- The recommended way to import this module is:
 --
 -- > import qualified Data.OpenPGP as OpenPGP
-module Data.OpenPGP (Message(..), Packet(..), SignatureSubpacket(..), HashAlgorithm(..), KeyAlgorithm(..), CompressionAlgorithm(..), MPI(..), fingerprint_material, signatures_and_data, signature_issuer, calculate_signature_trailer) where
+module Data.OpenPGP (Message(..), Packet(..), SignatureSubpacket(..), HashAlgorithm(..), KeyAlgorithm(..), CompressionAlgorithm(..), MPI(..), fingerprint_material, signatures_and_data, signature_issuer, calculate_signature_trailer, decode_s2k_count, encode_s2k_count) where
 
 import Control.Monad
 import Data.Bits
@@ -58,7 +58,7 @@ data Packet =
 		s2k_type::Word8,
 		s2k_hash_algorithm::HashAlgorithm,
 		s2k_salt::Word64,
-		s2k_count::Word8,
+		s2k_count::Word32,
 		encrypted_data::LZ.ByteString,
 		private_hash::Maybe LZ.ByteString -- the hash may be in the encrypted data
 	} |
@@ -214,12 +214,13 @@ put_packet (SecretKeyPacket { version = version, timestamp = timestamp,
                               s2k_type = s2k_type,
                               s2k_hash_algorithm = s2k_hash_algo,
                               s2k_salt = s2k_salt,
+                              s2k_count = s2k_count,
                               encrypted_data = encrypted_data }) =
 	(LZ.concat $ [p, encode s2k_useage] ++
 	(if s2k_useage `elem` [255, 254] then
-		-- TODO: if s2k_type == 3 reverse ugly bit manipulation
 		[encode symmetric_type, encode s2k_type, encode s2k_hash_algo] ++
-		if s2k_type `elem` [1, 3] then [encode s2k_salt] else []
+		(if s2k_type `elem` [1, 3] then [encode s2k_salt] else []) ++
+		if s2k_type == 3 then [encode $ encode_s2k_count s2k_count] else []
 	else []) ++
 	(if s2k_useage > 0 then
 		[encrypted_data]
@@ -324,11 +325,8 @@ parse_packet  5 = do
 			s2k_hash_algorithm <- get
 			s2k_salt <- if s2k_type `elem` [1, 3] then get
 				else return undefined
-			s2k_count <- if s2k_type == 3 then do
-				c <- fmap fromIntegral (get :: Get Word8)
-				return $ fromIntegral $
-					(16 + (c .&. 15)) `shiftL` ((c `shiftR` 4) + 6)
-				else return undefined
+			s2k_count <- if s2k_type == 3 then fmap decode_s2k_count get else
+				return undefined
 			return (k symmetric_type s2k_type s2k_hash_algorithm
 				s2k_salt s2k_count)
 		_ | s2k_useage > 0 ->
@@ -612,3 +610,19 @@ parse_signature_subpacket 16 = do
 -- Fail nicely for unimplemented packets
 parse_signature_subpacket x =
 	fail $ "Unimplemented OpenPGP signature subpacket tag " ++ show x ++ "."
+
+decode_s2k_count :: Word8 -> Word32
+decode_s2k_count c =  (16 + (fromIntegral c .&. 15)) `shiftL`
+	((fromIntegral c `shiftR` 4) + 6)
+
+encode_s2k_count :: Word32 -> Word8
+encode_s2k_count iterations
+	| iterations >= 65011712 = 255
+	| decode_s2k_count result < iterations = result+1
+	| otherwise = result
+	where
+	result = fromIntegral $ (fromIntegral c `shiftL` 4) .|. (count - 16)
+	(count, c) = encode_s2k_count' (iterations `shiftR` 6) 0
+	encode_s2k_count' count c
+		| count < 32 = (count, c)
+		| otherwise = encode_s2k_count' (count `shiftR` 1) (c+1)
