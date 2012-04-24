@@ -40,13 +40,16 @@ find_key (OpenPGP.Message (x@(OpenPGP.PublicKeyPacket {}):xs)) keyid =
 	find_key_ x xs keyid
 find_key (OpenPGP.Message (x@(OpenPGP.SecretKeyPacket {}):xs)) keyid =
 	find_key_ x xs keyid
+find_key (OpenPGP.Message (_:xs)) keyid =
+	find_key (OpenPGP.Message xs) keyid
 find_key _ _ = Nothing
 
 find_key_ :: OpenPGP.Packet -> [OpenPGP.Packet] -> String -> Maybe OpenPGP.Packet
-find_key_ x xs keyid =
-	if thisid == keyid then Just x else find_key (OpenPGP.Message xs) keyid
-	where thisid = reverse $
-		take (length keyid) (reverse (fingerprint x))
+find_key_ x xs keyid
+	| thisid == keyid = Just x
+	| otherwise = find_key (OpenPGP.Message xs) keyid
+	where
+	thisid = reverse $ take (length keyid) (reverse (fingerprint x))
 
 keyfield_as_octets :: OpenPGP.Packet -> Char -> [Word8]
 keyfield_as_octets k f =
@@ -65,7 +68,7 @@ emsa_pkcs1_v1_5_hash_padding _ =
 
 hash :: OpenPGP.HashAlgorithm -> [Word8] -> [Word8]
 hash OpenPGP.MD5 = MD5.hash
-hash OpenPGP.SHA1 = reverse . drop 2 . LZ.unpack . encode . OpenPGP.MPI . SHA1.toInteger . SHA1.hash
+hash OpenPGP.SHA1 = drop 2 . LZ.unpack . encode . OpenPGP.MPI . SHA1.toInteger . SHA1.hash
 hash OpenPGP.SHA256 = SHA256.hash
 hash OpenPGP.SHA384 = SHA384.hash
 hash OpenPGP.SHA512 = SHA512.hash
