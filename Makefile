@@ -23,7 +23,7 @@ verify: examples/verify.hs Data/*.hs Data/OpenPGP/*.hs
 keygen: examples/keygen.hs Data/*.hs Data/OpenPGP/*.hs
 	ghc --make $(GHCFLAGS) -o $@ $^
 
-tests/suite: tests/suite.hs
+tests/suite: tests/suite.hs Data/*.hs Data/OpenPGP/*.hs
 	ghc --make $(GHCFLAGS) -o $@ $^
 
 report.html: examples/*.hs Data/*.hs Data/OpenPGP/*.hs tests/*.hs
