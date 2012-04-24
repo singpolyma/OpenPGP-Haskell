@@ -39,8 +39,8 @@ dist/setup-config: openpgp.cabal
 
 clean:
 	find -name '*.o' -o -name '*.hi' | xargs $(RM)
-	$(RM) sign verify
-	$(RM) -r dist
+	$(RM) sign verify keygen
+	$(RM) -r dist dist-ghc
 
 debian/control: openpgp.cabal
 	cabal-debian --update-debianization
