@@ -7,6 +7,7 @@ import Test.HUnit hiding (Test)
 import Data.Word
 import Data.Binary
 import qualified Data.OpenPGP as OpenPGP
+import qualified Data.OpenPGP.Crypto as OpenPGP
 import qualified Data.ByteString.Lazy as LZ
 
 testSerialization :: FilePath -> Assertion
@@ -21,6 +22,12 @@ testSerialization fp = do
 	nullShield pass (OpenPGP.Message []) _ =
 		assertFailure $ pass ++ " pass of " ++ fp ++ " decoded to nothing."
 	nullShield _ m f = f m
+
+testFingerprint :: FilePath -> String -> Assertion
+testFingerprint fp kf = do
+	bs <- LZ.readFile $ "tests/data/" ++ fp
+	let (OpenPGP.Message [packet]) = decode bs
+	assertEqual ("for " ++ fp) kf (OpenPGP.fingerprint packet)
 
 prop_s2k_count :: Word8 -> Bool
 prop_s2k_count c =
@@ -116,6 +123,12 @@ tests =
 			testCase "onepass_sig" (testSerialization "onepass_sig")
 			-- Issue #11 -- testCase "uncompressed-ops-dsa.gpg" (testSerialization "uncompressed-ops-dsa.gpg"),
 			-- Issue #11 -- testCase "uncompressed-ops-rsa.gpg" (testSerialization "uncompressed-ops-rsa.gpg"),
+		],
+		testGroup "Fingerprint group" [
+			testCase "000001-006.public_key" (testFingerprint "000001-006.public_key" "421F28FEAAD222F856C8FFD5D4D54EA16F87040E"),
+			testCase "000016-006.public_key" (testFingerprint "000016-006.public_key" "AF95E4D7BAC521EE9740BED75E9F1523413262DC"),
+			testCase "000027-006.public_key" (testFingerprint "000027-006.public_key" "1EB20B2F5A5CC3BEAFD6E5CB7732CF988A63EA86"),
+			testCase "000035-006.public_key" (testFingerprint "000035-006.public_key" "CB7933459F59C70DF1C3FBEEDEDC3ECF689AF56D")
 		],
 		testGroup "S2K count" [
 			testProperty "S2K count encode reverses decode" prop_s2k_count
