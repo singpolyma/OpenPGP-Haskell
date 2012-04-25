@@ -306,7 +306,7 @@ parse_packet :: Word8 -> Get Packet
 parse_packet  2 = do
 	version <- get
 	case version of
-		3 -> undefined -- TODO: V3 sigs
+		3 -> error "V3 signatures are not supported yet" -- TODO: V3 sigs
 		4 -> do
 			signature_type <- get
 			key_algorithm <- get
