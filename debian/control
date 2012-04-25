@@ -7,8 +7,6 @@ Build-Depends: debhelper (>= 7.0),
                cdbs,
                ghc,
                ghc-prof,
-               libghc-crypto-dev,
-               libghc-crypto-prof,
                libghc-binary-dev,
                libghc-binary-prof,
                libghc-bzlib-dev,
@@ -18,7 +16,6 @@ Build-Depends: debhelper (>= 7.0),
                libghc-zlib-dev,
                libghc-zlib-prof
 Build-Depends-Indep: ghc-doc,
-                     libghc-crypto-doc,
                      libghc-binary-doc,
                      libghc-bzlib-doc,
                      libghc-utf8-string-doc,
@@ -44,15 +41,11 @@ Description: Implementation of the OpenPGP message format
  and then defines instances of Data.Binary for each to facilitate
  encoding/decoding.
  .
- There is also a wrapper around <http://hackage.haskell.org/package/Crypto>
- that currently does fingerprint generation, signature generation, and
- signature verification (for RSA keys only).
+ For performing cryptography, see <http://hackage.haskell.org/openpgp-Crypto>
  .
- It is intended that you use qualified imports with this library.  If importing
- both modules, something like this will do:
+ It is intended that you use qualified imports with this library.
  .
  > import qualified Data.OpenPGP as OpenPGP
- > import qualified Data.OpenPGP.Crypto as OpenPGP
  .
   Author: Stephen Paul Weber <singpolyma@singpolyma.net>
   Upstream-Maintainer: Stephen Paul Weber <singpolyma@singpolyma.net>
@@ -76,15 +69,11 @@ Description: Implementation of the OpenPGP message format
  and then defines instances of Data.Binary for each to facilitate
  encoding/decoding.
  .
- There is also a wrapper around <http://hackage.haskell.org/package/Crypto>
- that currently does fingerprint generation, signature generation, and
- signature verification (for RSA keys only).
+ For performing cryptography, see <http://hackage.haskell.org/openpgp-Crypto>
  .
- It is intended that you use qualified imports with this library.  If importing
- both modules, something like this will do:
+ It is intended that you use qualified imports with this library.
  .
  > import qualified Data.OpenPGP as OpenPGP
- > import qualified Data.OpenPGP.Crypto as OpenPGP
  .
   Author: Stephen Paul Weber <singpolyma@singpolyma.net>
   Upstream-Maintainer: Stephen Paul Weber <singpolyma@singpolyma.net>
@@ -108,15 +97,11 @@ Description: Implementation of the OpenPGP message format
  and then defines instances of Data.Binary for each to facilitate
  encoding/decoding.
  .
- There is also a wrapper around <http://hackage.haskell.org/package/Crypto>
- that currently does fingerprint generation, signature generation, and
- signature verification (for RSA keys only).
+ For performing cryptography, see <http://hackage.haskell.org/openpgp-Crypto>
  .
- It is intended that you use qualified imports with this library.  If importing
- both modules, something like this will do:
+ It is intended that you use qualified imports with this library.
  .
  > import qualified Data.OpenPGP as OpenPGP
- > import qualified Data.OpenPGP.Crypto as OpenPGP
  .
   Author: Stephen Paul Weber <singpolyma@singpolyma.net>
   Upstream-Maintainer: Stephen Paul Weber <singpolyma@singpolyma.net>

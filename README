@@ -7,12 +7,8 @@ It defines types to represent OpenPGP messages as a series of packets
 and then defines instances of Data.Binary for each to facilitate
 encoding/decoding.
 
-There is also a wrapper around <http://hackage.haskell.org/package/Crypto>
-that currently does fingerprint generation, signature generation, and
-signature verification (for RSA keys only).
+For performing cryptography, see <http://hackage.haskell.org/openpgp-Crypto>
 
-It is intended that you use qualified imports with this library.  If importing
-both modules, something like this will do:
+It is intended that you use qualified imports with this library.
 
 > import qualified Data.OpenPGP as OpenPGP
-> import qualified Data.OpenPGP.Crypto as OpenPGP
