@@ -47,6 +47,7 @@ module Data.OpenPGP (
 	KeyAlgorithm(..),
 	CompressionAlgorithm(..),
 	MPI(..),
+	find_key,
 	fingerprint_material,
 	signatures_and_data,
 	signature_issuer,
@@ -676,7 +677,23 @@ encode_s2k_count iterations
 		| count < 32 = (count, c)
 		| otherwise = encode_s2k_count' (count `shiftR` 1) (c+1)
 
--- SignaturePacket smart constructor
+find_key :: (Packet -> String) -> Message -> String -> Maybe Packet
+find_key fpr (Message (x@(PublicKeyPacket {}):xs)) keyid =
+	find_key' fpr x xs keyid
+find_key fpr (Message (x@(SecretKeyPacket {}):xs)) keyid =
+	find_key' fpr x xs keyid
+find_key fpr (Message (_:xs)) keyid =
+	find_key fpr (Message xs) keyid
+find_key _ _ _ = Nothing
+
+find_key' :: (Packet -> String) -> Packet -> [Packet] -> String -> Maybe Packet
+find_key' fpr x xs keyid
+	| thisid == keyid = Just x
+	| otherwise = find_key fpr (Message xs) keyid
+	where
+	thisid = reverse $ take (length keyid) (reverse (fpr x))
+
+-- | SignaturePacket smart constructor
 signaturePacket :: Word8 -> Word8 -> KeyAlgorithm -> HashAlgorithm -> [SignatureSubpacket] -> [SignatureSubpacket] -> Word16 -> MPI -> Packet
 signaturePacket version signature_type key_algorithm hash_algorithm hashed_subpackets unhashed_subpackets hash_head signature =
 	let p = SignaturePacket {
