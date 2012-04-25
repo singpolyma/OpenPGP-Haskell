@@ -48,6 +48,7 @@ module Data.OpenPGP (
 import Control.Monad
 import Data.Bits
 import Data.Word
+import Data.Maybe
 import Data.Map (Map, (!))
 import qualified Data.Map as Map
 import qualified Data.ByteString.Lazy as LZ
@@ -93,12 +94,12 @@ data Packet =
 		timestamp::Word32,
 		key_algorithm::KeyAlgorithm,
 		key::Map Char MPI,
-		s2k_useage::Word8,
-		symmetric_type::Word8,
-		s2k_type::Word8,
-		s2k_hash_algorithm::HashAlgorithm,
-		s2k_salt::Word64,
-		s2k_count::Word32,
+		s2k_useage::Word8, -- determines if the Maybes are Just or Nothing
+		symmetric_type::Maybe Word8,
+		s2k_type::Maybe Word8,
+		s2k_hash_algorithm::Maybe HashAlgorithm,
+		s2k_salt::Maybe Word64,
+		s2k_count::Maybe Word32,
 		encrypted_data::LZ.ByteString,
 		private_hash::Maybe LZ.ByteString -- the hash may be in the encrypted data
 	} |
@@ -253,9 +254,11 @@ put_packet (SecretKeyPacket { version = version, timestamp = timestamp,
                               encrypted_data = encrypted_data }) =
 	(LZ.concat $ [p, encode s2k_useage] ++
 	(if s2k_useage `elem` [255, 254] then
-		[encode symmetric_type, encode s2k_type, encode s2k_hash_algo] ++
-		(if s2k_type `elem` [1, 3] then [encode s2k_salt] else []) ++
-		if s2k_type == 3 then [encode $ encode_s2k_count s2k_count] else []
+		[encode $ fromJust symmetric_type, encode s2k_t,
+		 encode $ fromJust s2k_hash_algo] ++
+		(if s2k_t `elem` [1,3] then [encode $ fromJust s2k_salt] else []) ++
+		if s2k_t == 3 then
+			[encode $ encode_s2k_count $ fromJust s2k_count] else []
 	else []) ++
 	(if s2k_useage > 0 then
 		[encrypted_data]
@@ -268,6 +271,7 @@ put_packet (SecretKeyPacket { version = version, timestamp = timestamp,
 				LZ.foldl (\c i -> (c + fromIntegral i) `mod` 65536)
 				(0::Integer) (LZ.concat s) :: Word16)]), 5)
 	where
+	(Just s2k_t) = s2k_type
 	p = fst (put_packet $ PublicKeyPacket version timestamp algorithm key
 		:: (LZ.ByteString, Integer)) -- Supress warning
 	s = map (encode . (key !)) (secret_key_fields algorithm)
@@ -363,13 +367,13 @@ parse_packet  5 = do
 				else return undefined
 			s2k_count <- if s2k_type == 3 then fmap decode_s2k_count get else
 				return undefined
-			return (k symmetric_type s2k_type s2k_hash_algorithm
-				s2k_salt s2k_count)
+			return (k (Just symmetric_type) (Just s2k_type)
+				(Just s2k_hash_algorithm) (Just s2k_salt) (Just s2k_count))
 		_ | s2k_useage > 0 ->
 			-- s2k_useage is symmetric_type in this case
-			return (k s2k_useage undefined undefined undefined undefined)
+			return (k (Just s2k_useage) Nothing Nothing Nothing Nothing)
 		_ ->
-			return (k undefined undefined undefined undefined undefined)
+			return (k Nothing Nothing Nothing Nothing Nothing)
 	if s2k_useage > 0 then do {
 		encrypted <- getRemainingLazyByteString;
 		return (k' encrypted Nothing)
@@ -378,7 +382,7 @@ parse_packet  5 = do
 			mpi <- get :: Get MPI
 			return $ Map.insert f mpi m) key (secret_key_fields algorithm)
 		private_hash <- getRemainingLazyByteString
-		return ((k' undefined (Just private_hash)) {key = key})
+		return ((k' LZ.empty (Just private_hash)) {key = key})
 -- PublicKeyPacket, http://tools.ietf.org/html/rfc4880#section-5.5.2
 parse_packet  6 = do
 	version <- get :: Get Word8
