@@ -60,8 +60,6 @@ import Data.Bits
 import Data.Word
 import Data.Char
 import Data.Maybe
-import Data.Map (Map, (!))
-import qualified Data.Map as Map
 import qualified Data.ByteString.Lazy as LZ
 import qualified Data.ByteString.Lazy.UTF8 as LZ (toString, fromString)
 
@@ -96,13 +94,13 @@ data Packet =
 		version::Word8,
 		timestamp::Word32,
 		key_algorithm::KeyAlgorithm,
-		key::Map Char MPI
+		key::[(Char,MPI)]
 	} |
 	SecretKeyPacket {
 		version::Word8,
 		timestamp::Word32,
 		key_algorithm::KeyAlgorithm,
-		key::Map Char MPI,
+		key::[(Char,MPI)],
 		s2k_useage::Word8, -- determines if the Maybes are Just or Nothing
 		symmetric_type::Maybe Word8,
 		s2k_type::Maybe Word8,
@@ -196,6 +194,9 @@ secret_key_fields RSA_S   = secret_key_fields RSA
 secret_key_fields ELGAMAL = ['x']
 secret_key_fields DSA     = ['x']
 secret_key_fields _       = undefined -- Nothing in the spec. Maybe empty
+
+(!) :: (Eq k) => [(k,v)] -> k -> v
+(!) xs = fromJust . (`lookup` xs)
 
 -- Need this seperate for trailer calculation
 signature_packet_start :: Packet -> LZ.ByteString
@@ -389,7 +390,7 @@ parse_packet  5 = do
 	} else do
 		key <- foldM (\m f -> do
 			mpi <- get :: Get MPI
-			return $ Map.insert f mpi m) key (secret_key_fields algorithm)
+			return $ (f,mpi):m) key (secret_key_fields algorithm)
 		private_hash <- getRemainingLazyByteString
 		return ((k' LZ.empty (Just private_hash)) {key = key})
 -- PublicKeyPacket, http://tools.ietf.org/html/rfc4880#section-5.5.2
@@ -406,7 +407,7 @@ parse_packet  6 = do
 				version = 4,
 				timestamp = timestamp,
 				key_algorithm = algorithm,
-				key = Map.fromList key
+				key = key
 			}
 		x -> fail $ "Unsupported PublicKeyPacket version " ++ show x ++ "."
 -- CompressedDataPacket, http://tools.ietf.org/html/rfc4880#section-5.6
