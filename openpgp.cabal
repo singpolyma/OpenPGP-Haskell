@@ -4,7 +4,7 @@ cabal-version:   >= 1.8
 license:         OtherLicense
 license-file:    COPYING
 category:        Data
-copyright:       © 2011 Stephen Paul Weber
+copyright:       © 2011-2012 Stephen Paul Weber
 author:          Stephen Paul Weber <singpolyma@singpolyma.net>
 maintainer:      Stephen Paul Weber <singpolyma@singpolyma.net>
 stability:       experimental
