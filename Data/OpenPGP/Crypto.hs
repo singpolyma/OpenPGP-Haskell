@@ -28,13 +28,18 @@ import qualified Data.OpenPGP as OpenPGP
 -- | Generate a key fingerprint from a PublicKeyPacket or SecretKeyPacket
 -- <http://tools.ietf.org/html/rfc4880#section-12.2>
 fingerprint :: OpenPGP.Packet -> String
-fingerprint p | OpenPGP.version p == 4 =
-	map toUpper $ (`showHex` "") $ SHA1.toInteger $ SHA1.hash $
-		LZ.unpack (LZ.concat (OpenPGP.fingerprint_material p))
-fingerprint p | OpenPGP.version p `elem` [2, 3] =
-	map toUpper $ foldr showHex "" $
-		MD5.hash $ LZ.unpack (LZ.concat (OpenPGP.fingerprint_material p))
-fingerprint _ = error "Unsupported Packet version or type in fingerprint."
+fingerprint p
+	| OpenPGP.version p == 4 =
+		map toUpper $ (`showHex` "") $ SHA1.toInteger $ SHA1.hash $
+			LZ.unpack (LZ.concat (OpenPGP.fingerprint_material p))
+	| OpenPGP.version p `elem` [2, 3] =
+		map toUpper $ foldr (pad `oo` showHex) "" $
+			MD5.hash $ LZ.unpack (LZ.concat (OpenPGP.fingerprint_material p))
+	| otherwise = error "Unsupported Packet version or type in fingerprint"
+	where
+	oo = (.) . (.)
+	pad s | odd $ length s = '0':s
+	      | otherwise = s
 
 find_key :: OpenPGP.Message -> String -> Maybe OpenPGP.Packet
 find_key (OpenPGP.Message (x@(OpenPGP.PublicKeyPacket {}):xs)) keyid =
