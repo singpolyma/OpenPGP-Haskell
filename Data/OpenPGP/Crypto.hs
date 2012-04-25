@@ -106,6 +106,8 @@ sign :: OpenPGP.Message    -- ^ SecretKeys, one of which will be used
         -> Integer -- ^ Timestamp for signature (unless sig supplied)
         -> OpenPGP.Packet
 sign keys message hsh keyid timestamp =
+	-- WARNING: this style of update is unsafe on most fields
+	-- it is safe on signature and hash_head, though
 	sig {
 		OpenPGP.signature = OpenPGP.MPI $ toNum final,
 		OpenPGP.hash_head = toNum $ take 2 final
@@ -124,32 +126,34 @@ sign keys message hsh keyid timestamp =
 			LZ.fromString firstUserID
 		]
 	} `LZ.append` OpenPGP.trailer sig
-	-- Always force key and hash algorithm
-	sig     = let s = (findSigOrDefault (find isSignature m)) {
-		OpenPGP.key_algorithm = OpenPGP.RSA,
-		OpenPGP.hash_algorithm = hsh
-	} in s { OpenPGP.trailer = OpenPGP.calculate_signature_trailer s }
+	sig     = (findSigOrDefault (find OpenPGP.isSignaturePacket m))
 
 	-- Either a SignaturePacket was found, or we need to make one
-	findSigOrDefault (Just s) = s
-	findSigOrDefault Nothing  = OpenPGP.SignaturePacket {
-		OpenPGP.version = 4,
-		OpenPGP.key_algorithm = undefined,
-		OpenPGP.hash_algorithm = undefined,
-		OpenPGP.signature_type = defaultStype,
-		OpenPGP.hashed_subpackets = [
+	findSigOrDefault (Just s) = OpenPGP.signaturePacket
+		(OpenPGP.version s)
+		(OpenPGP.signature_type s)
+		OpenPGP.RSA -- force key and hash algorithm
+		hsh
+		(OpenPGP.hashed_subpackets s)
+		(OpenPGP.unhashed_subpackets s)
+		(OpenPGP.hash_head s)
+		(OpenPGP.signature s)
+	findSigOrDefault Nothing  = OpenPGP.signaturePacket
+		4
+		defaultStype
+		OpenPGP.RSA
+		hsh
+		([
 			-- Do we really need to pass in timestamp just for the default?
 			OpenPGP.SignatureCreationTimePacket $ fromIntegral timestamp,
 			OpenPGP.IssuerPacket keyid'
 		] ++ (case signOver of
 			OpenPGP.LiteralDataPacket {} -> []
 			_ -> [] -- TODO: OpenPGP.KeyFlagsPacket [0x01, 0x02]
-		),
-		OpenPGP.unhashed_subpackets = [],
-		OpenPGP.signature = undefined,
-		OpenPGP.trailer = undefined,
-		OpenPGP.hash_head = undefined
-	}
+		))
+		[]
+		undefined
+		undefined
 
 	keyid'  = reverse $ take 16 $ reverse $ fingerprint k
 	Just k  = find_key keys keyid
@@ -168,9 +172,6 @@ sign keys message hsh keyid timestamp =
 	isSignable (OpenPGP.PublicKeyPacket {})   = True
 	isSignable (OpenPGP.SecretKeyPacket {})   = True
 	isSignable _                              = False
-
-	isSignature (OpenPGP.SignaturePacket {})  = True
-	isSignature _                             = False
 
 	isUserID (OpenPGP.UserIDPacket {})        = True
 	isUserID _                                = False

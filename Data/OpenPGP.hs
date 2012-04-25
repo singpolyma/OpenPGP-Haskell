@@ -3,7 +3,47 @@
 -- The recommended way to import this module is:
 --
 -- > import qualified Data.OpenPGP as OpenPGP
-module Data.OpenPGP (Message(..), Packet(..), SignatureSubpacket(..), HashAlgorithm(..), KeyAlgorithm(..), CompressionAlgorithm(..), MPI(..), fingerprint_material, signatures_and_data, signature_issuer, calculate_signature_trailer, decode_s2k_count, encode_s2k_count) where
+module Data.OpenPGP (
+	Packet(OnePassSignaturePacket, PublicKeyPacket, SecretKeyPacket, CompressedDataPacket, LiteralDataPacket, UserIDPacket, UnsupportedPacket),
+	compression_algorithm,
+	content,
+	encrypted_data,
+	filename,
+	format,
+	hash_algorithm,
+	hashed_subpackets,
+	hash_head,
+	key,
+	key_algorithm,
+	key_id,
+	message,
+	nested,
+	private_hash,
+	s2k_count,
+	s2k_hash_algorithm,
+	s2k_salt,
+	s2k_type,
+	s2k_useage,
+	signature,
+	signature_type,
+	symmetric_type,
+	timestamp,
+	trailer,
+	unhashed_subpackets,
+	version,
+	isSignaturePacket,
+	signaturePacket,
+	Message(..),
+	SignatureSubpacket(..),
+	HashAlgorithm(..),
+	KeyAlgorithm(..),
+	CompressionAlgorithm(..),
+	MPI(..),
+	fingerprint_material,
+	signatures_and_data,
+	signature_issuer,
+	decode_s2k_count, encode_s2k_count
+) where
 
 import Control.Monad
 import Data.Bits
@@ -181,22 +221,16 @@ calculate_signature_trailer p =
 
 put_packet :: (Num a) => Packet -> (LZ.ByteString, a)
 put_packet (SignaturePacket { version = 4,
-                              signature_type = signature_type,
-                              key_algorithm = key_algorithm,
-                              hash_algorithm = hash_algorithm,
-                              hashed_subpackets = hashed_subpackets,
                               unhashed_subpackets = unhashed_subpackets,
                               hash_head = hash_head,
-                              signature = signature }) =
-	(LZ.concat [ LZ.singleton 4, encode signature_type,
-	            encode key_algorithm, encode hash_algorithm,
-	            encode (fromIntegral $ LZ.length hashed :: Word16),
-	            hashed,
+                              signature = signature,
+                              trailer = trailer }) =
+	(LZ.concat [ trailer_top,
 	            encode (fromIntegral $ LZ.length unhashed :: Word16),
 	            unhashed,
 	            encode hash_head, encode signature ], 2)
 	where
-	hashed   = LZ.concat $ map encode hashed_subpackets
+	trailer_top = LZ.reverse $ LZ.drop 6 $ LZ.reverse trailer
 	unhashed = LZ.concat $ map encode unhashed_subpackets
 put_packet (OnePassSignaturePacket { version = version,
                                      signature_type = signature_type,
@@ -522,10 +556,8 @@ signatures_and_data :: Message -> ([Packet], [Packet])
 signatures_and_data (Message ((CompressedDataPacket {message = m}):_)) =
 	signatures_and_data m
 signatures_and_data (Message lst) =
-	(filter isSig lst, filter isDta lst)
+	(filter isSignaturePacket lst, filter isDta lst)
 	where
-	isSig (SignaturePacket {}) = True
-	isSig _ = False
 	isDta (LiteralDataPacket {}) = True
 	isDta _ = False
 
@@ -631,3 +663,22 @@ encode_s2k_count iterations
 	encode_s2k_count' count c
 		| count < 32 = (count, c)
 		| otherwise = encode_s2k_count' (count `shiftR` 1) (c+1)
+
+-- SignaturePacket smart constructor
+signaturePacket :: Word8 -> Word8 -> KeyAlgorithm -> HashAlgorithm -> [SignatureSubpacket] -> [SignatureSubpacket] -> Word16 -> MPI -> Packet
+signaturePacket version signature_type key_algorithm hash_algorithm hashed_subpackets unhashed_subpackets hash_head signature =
+	let p = SignaturePacket {
+		version = version,
+		signature_type = signature_type,
+		key_algorithm = key_algorithm,
+		hash_algorithm = hash_algorithm,
+		hashed_subpackets = hashed_subpackets,
+		unhashed_subpackets = unhashed_subpackets,
+		hash_head = hash_head,
+		signature = signature,
+		trailer = undefined
+	} in p { trailer = calculate_signature_trailer p }
+
+isSignaturePacket :: Packet -> Bool
+isSignaturePacket (SignaturePacket {})  = True
+isSignaturePacket _                     = False
