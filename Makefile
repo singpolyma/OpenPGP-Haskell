@@ -52,7 +52,7 @@ debian/control: openpgp.cabal
 	cabal-debian --update-debianization
 
 dist/build/libHSopenpgp-$(VERSION).a: openpgp.cabal dist/setup-config Data/BaseConvert.hs Data/OpenPGP.hs Data/OpenPGP/Crypto.hs
-	cabal build
+	cabal build --ghc-options="$(GHCFLAGS)"
 
 dist/openpgp-$(VERSION).tar.gz: openpgp.cabal dist/setup-config Data/BaseConvert.hs Data/OpenPGP.hs Data/OpenPGP/Crypto.hs README
 	cabal check
