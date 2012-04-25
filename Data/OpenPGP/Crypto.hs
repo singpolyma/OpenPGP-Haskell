@@ -127,7 +127,7 @@ sign keys message hsh keyid timestamp =
 			LZ.fromString firstUserID
 		]
 	} `LZ.append` OpenPGP.trailer sig
-	sig     = (findSigOrDefault (find OpenPGP.isSignaturePacket m))
+	sig     = findSigOrDefault (find OpenPGP.isSignaturePacket m)
 
 	-- Either a SignaturePacket was found, or we need to make one
 	findSigOrDefault (Just s) = OpenPGP.signaturePacket
