@@ -45,9 +45,11 @@ module Data.OpenPGP (
 	decode_s2k_count, encode_s2k_count
 ) where
 
+import Numeric
 import Control.Monad
 import Data.Bits
 import Data.Word
+import Data.Char
 import Data.Maybe
 import Data.Map (Map, (!))
 import qualified Data.Map as Map
@@ -60,8 +62,6 @@ import Data.Binary.Put
 import qualified Codec.Compression.Zlib.Raw as Zip
 import qualified Codec.Compression.Zlib as Zlib
 import qualified Codec.Compression.BZip as BZip2
-
-import qualified Data.BaseConvert as BaseConvert
 
 data Packet =
 	SignaturePacket {
@@ -241,7 +241,7 @@ put_packet (OnePassSignaturePacket { version = version,
                                      nested = nested }) =
 	(LZ.concat [ encode version, encode signature_type,
 	             encode hash_algorithm, encode key_algorithm,
-	             encode (BaseConvert.toNum 16 key_id :: Word64),
+	             encode (fst $ head $ readHex key_id :: Word64),
 	             encode nested ], 4)
 put_packet (SecretKeyPacket { version = version, timestamp = timestamp,
                               key_algorithm = algorithm, key = key,
@@ -344,7 +344,7 @@ parse_packet  4 = do
 		signature_type = signature_type,
 		hash_algorithm = hash_algo,
 		key_algorithm = key_algo,
-		key_id = BaseConvert.toString 16 key_id,
+		key_id = map toUpper $ showHex key_id "",
 		nested = nested
 	}
 -- SecretKeyPacket, http://tools.ietf.org/html/rfc4880#section-5.5.3
@@ -628,7 +628,7 @@ put_signature_subpacket :: SignatureSubpacket -> (LZ.ByteString, Word8)
 put_signature_subpacket (SignatureCreationTimePacket time) =
 	(encode time, 2)
 put_signature_subpacket (IssuerPacket keyid) =
-	(encode (BaseConvert.toNum 16 keyid :: Word64), 16)
+	(encode (fst $ head $ readHex keyid :: Word64), 16)
 put_signature_subpacket (UnsupportedSignatureSubpacket tag bytes) =
 	(bytes, tag)
 
@@ -647,7 +647,7 @@ parse_signature_subpacket  2 = fmap SignatureCreationTimePacket get
 -- IssuerPacket, http://tools.ietf.org/html/rfc4880#section-5.2.3.5
 parse_signature_subpacket 16 = do
 	keyid <- get :: Get Word64
-	return $ IssuerPacket (BaseConvert.toString 16 keyid)
+	return $ IssuerPacket (map toUpper $ showHex keyid "")
 -- Represent unsupported packets as their tag and literal bytes
 parse_signature_subpacket tag =
 	fmap (UnsupportedSignatureSubpacket tag) getRemainingLazyByteString

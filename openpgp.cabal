@@ -128,9 +128,6 @@ library
                 Data.OpenPGP
                 Data.OpenPGP.Crypto
 
-        other-modules:
-                Data.BaseConvert
-
         build-depends:
                 base == 4.*,
                 containers,

@@ -6,7 +6,9 @@
 -- > import qualified Data.OpenPGP.Crypto as OpenPGP
 module Data.OpenPGP.Crypto (sign, verify, fingerprint) where
 
+import Numeric
 import Data.Word
+import Data.Char
 import Data.List (find)
 import Data.Map ((!))
 import qualified Data.ByteString.Lazy as LZ
@@ -22,16 +24,15 @@ import qualified Data.Digest.SHA384 as SHA384
 import qualified Data.Digest.SHA512 as SHA512
 
 import qualified Data.OpenPGP as OpenPGP
-import qualified Data.BaseConvert as BaseConvert
 
 -- | Generate a key fingerprint from a PublicKeyPacket or SecretKeyPacket
 -- <http://tools.ietf.org/html/rfc4880#section-12.2>
 fingerprint :: OpenPGP.Packet -> String
 fingerprint p | OpenPGP.version p == 4 =
-	BaseConvert.toString 16 $ SHA1.toInteger $ SHA1.hash $
+	map toUpper $ (`showHex` "") $ SHA1.toInteger $ SHA1.hash $
 		LZ.unpack (LZ.concat (OpenPGP.fingerprint_material p))
 fingerprint p | OpenPGP.version p `elem` [2, 3] =
-	concatMap (BaseConvert.toString 16) $
+	map toUpper $ foldr showHex "" $
 		MD5.hash $ LZ.unpack (LZ.concat (OpenPGP.fingerprint_material p))
 fingerprint _ = error "Unsupported Packet version or type in fingerprint."
 
