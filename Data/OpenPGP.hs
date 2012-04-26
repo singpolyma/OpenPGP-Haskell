@@ -323,12 +323,12 @@ parse_packet  2 = do
 			hash_algorithm <- get
 			hashed_size <- fmap fromIntegral (get :: Get Word16)
 			hashed_data <- getLazyByteString hashed_size
-			let hashed = runGet get_signature_subpackets hashed_data
+			let hashed = runGet listUntilEnd hashed_data
 			unhashed_size <- fmap fromIntegral (get :: Get Word16)
 			unhashed_data <- getLazyByteString unhashed_size
-			let unhashed = runGet get_signature_subpackets unhashed_data
+			let unhashed = runGet listUntilEnd unhashed_data
 			hash_head <- get
-			signature <- get
+			signature <- listUntilEnd
 			return SignaturePacket {
 				version = version,
 				signature_type = signature_type,
@@ -558,12 +558,7 @@ instance Binary Message where
 	put (Message (x:xs)) = do
 		put x
 		put (Message xs)
-	get = do
-		done <- isEmpty
-		if done then return (Message []) else do
-			next_packet <- get
-			(Message tail) <- get
-			return $ Message (next_packet:tail)
+	get = fmap Message listUntilEnd
 
 -- | Extract all signature and data packets from a 'Message'
 signatures_and_data :: Message -> ([Packet], [Packet])
@@ -592,6 +587,14 @@ instance Binary MPI where
 		bytes <- getLazyByteString ((length + 7) `div` 8)
 		return (MPI (LZ.foldl (\a b ->
 			a `shiftL` 8 .|. fromIntegral b) 0 bytes))
+
+listUntilEnd :: (Binary a) => Get [a]
+listUntilEnd = do
+	done <- isEmpty
+	if done then return [] else do
+		next <- get
+		rest <- listUntilEnd
+		return (next:rest)
 
 data SignatureSubpacket =
 	SignatureCreationTimePacket Word32 |
@@ -641,15 +644,6 @@ put_signature_subpacket (IssuerPacket keyid) =
 	(encode (fst $ head $ readHex keyid :: Word64), 16)
 put_signature_subpacket (UnsupportedSignatureSubpacket tag bytes) =
 	(bytes, tag)
-
-get_signature_subpackets :: Get [SignatureSubpacket]
-get_signature_subpackets = do
-	done <- isEmpty
-	if done then return [] else do {
-		next_packet <- get :: Get SignatureSubpacket;
-		tail <- get_signature_subpackets;
-		return (next_packet:tail);
-	}
 
 parse_signature_subpacket :: Word8 -> Get SignatureSubpacket
 -- SignatureCreationTimePacket, http://tools.ietf.org/html/rfc4880#section-5.2.3.4
