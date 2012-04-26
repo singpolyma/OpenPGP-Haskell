@@ -79,7 +79,7 @@ data Packet =
 		hashed_subpackets::[SignatureSubpacket],
 		unhashed_subpackets::[SignatureSubpacket],
 		hash_head::Word16,
-		signature::MPI,
+		signature::[MPI],
 		trailer::LZ.ByteString
 	} |
 	OnePassSignaturePacket {
@@ -236,10 +236,11 @@ put_packet (SignaturePacket { version = 4,
                               hash_head = hash_head,
                               signature = signature,
                               trailer = trailer }) =
-	(LZ.concat [ trailer_top,
-	            encode (fromIntegral $ LZ.length unhashed :: Word16),
-	            unhashed,
-	            encode hash_head, encode signature ], 2)
+	(LZ.concat $ [
+		trailer_top,
+		encode (fromIntegral $ LZ.length unhashed :: Word16),
+		unhashed, encode hash_head
+	] ++ map encode signature, 2)
 	where
 	trailer_top = LZ.reverse $ LZ.drop 6 $ LZ.reverse trailer
 	unhashed = LZ.concat $ map encode unhashed_subpackets
@@ -686,7 +687,7 @@ find_key' fpr x xs keyid
 	thisid = reverse $ take (length keyid) (reverse (fpr x))
 
 -- | SignaturePacket smart constructor
-signaturePacket :: Word8 -> Word8 -> KeyAlgorithm -> HashAlgorithm -> [SignatureSubpacket] -> [SignatureSubpacket] -> Word16 -> MPI -> Packet
+signaturePacket :: Word8 -> Word8 -> KeyAlgorithm -> HashAlgorithm -> [SignatureSubpacket] -> [SignatureSubpacket] -> Word16 -> [MPI] -> Packet
 signaturePacket version signature_type key_algorithm hash_algorithm hashed_subpackets unhashed_subpackets hash_head signature =
 	let p = SignaturePacket {
 		version = version,
