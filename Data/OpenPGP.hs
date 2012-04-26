@@ -554,10 +554,7 @@ instance Binary CompressionAlgorithm where
 -- A message is encoded as a list that takes the entire file
 newtype Message = Message [Packet] deriving (Show, Read, Eq)
 instance Binary Message where
-	put (Message []) = return ()
-	put (Message (x:xs)) = do
-		put x
-		put (Message xs)
+	put (Message xs) = mapM_ put xs
 	get = fmap Message listUntilEnd
 
 -- | Extract all signature and data packets from a 'Message'
