@@ -118,6 +118,7 @@ tests =
 			testCase "compressedsig-bzip2.gpg" (testSerialization "compressedsig-bzip2.gpg"),
 			testCase "onepass_sig" (testSerialization "onepass_sig"),
 			testCase "uncompressed-ops-dsa.gpg" (testSerialization "uncompressed-ops-dsa.gpg"),
+			testCase "uncompressed-ops-dsa-sha384.txt.gpg" (testSerialization "uncompressed-ops-dsa-sha384.txt.gpg"),
 			testCase "uncompressed-ops-rsa.gpg" (testSerialization "uncompressed-ops-rsa.gpg")
 		],
 		testGroup "S2K count" [
