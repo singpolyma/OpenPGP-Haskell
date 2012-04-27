@@ -711,6 +711,15 @@ data SignatureSubpacket =
 	PreferredKeyServerPacket String |
 	PrimaryUserIDPacket Bool |
 	PolicyURIPacket String |
+	KeyFlagsPacket {
+		certify_keys::Bool,
+		sign_data::Bool,
+		encrypt_communication::Bool,
+		encrypt_storage::Bool,
+		split_key::Bool,
+		authentication::Bool,
+		group_key::Bool
+	} |
 	UnsupportedSignatureSubpacket Word8 B.ByteString
 	deriving (Show, Read, Eq)
 
@@ -791,6 +800,19 @@ put_signature_subpacket (PrimaryUserIDPacket isprimary) =
 	(encode $ enum_to_word8 isprimary, 25)
 put_signature_subpacket (PolicyURIPacket uri) =
 	(B.fromString uri, 26)
+put_signature_subpacket (KeyFlagsPacket certify sign encryptC encryptS split auth group) =
+	( B.singleton $
+		flag 0x01 certify  .|.
+		flag 0x02 sign     .|.
+		flag 0x04 encryptC .|.
+		flag 0x08 encryptS .|.
+		flag 0x10 split    .|.
+		flag 0x20 auth     .|.
+		flag 0x80 group
+	, 27)
+	where
+	flag x True = x
+	flag _ False = 0x0
 put_signature_subpacket (UnsupportedSignatureSubpacket tag bytes) =
 	(bytes, tag)
 
@@ -874,6 +896,19 @@ parse_signature_subpacket 25 =
 -- PolicyURIPacket, http://tools.ietf.org/html/rfc4880#section-5.2.3.20
 parse_signature_subpacket 26 =
 	fmap (PolicyURIPacket . B.toString) getRemainingByteString
+-- KeyFlagsPacket, http://tools.ietf.org/html/rfc4880#section-5.2.3.21
+parse_signature_subpacket 27 = do
+	empty <- isEmpty
+	flag1 <- if empty then return 0 else get :: Get Word8
+	return $ KeyFlagsPacket {
+		certify_keys          = flag1 .&. 0x01 == 0x01,
+		sign_data             = flag1 .&. 0x02 == 0x02,
+		encrypt_communication = flag1 .&. 0x04 == 0x04,
+		encrypt_storage       = flag1 .&. 0x08 == 0x08,
+		split_key             = flag1 .&. 0x10 == 0x10,
+		authentication        = flag1 .&. 0x20 == 0x20,
+		group_key             = flag1 .&. 0x80 == 0x80
+	}
 -- Represent unsupported packets as their tag and literal bytes
 parse_signature_subpacket tag =
 	fmap (UnsupportedSignatureSubpacket tag) getRemainingByteString
