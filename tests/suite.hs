@@ -42,11 +42,11 @@ prop_s2k_count c =
 
 prop_MPI_serialization_loop :: OpenPGP.MPI -> Bool
 prop_MPI_serialization_loop mpi =
-	mpi == decode (encode mpi)
+	mpi == decode' (encode mpi)
 
 prop_SignatureSubpacket_serialization_loop :: OpenPGP.SignatureSubpacket -> Bool
 prop_SignatureSubpacket_serialization_loop packet =
-	packet == decode (encode packet)
+	packet == decode' (encode packet)
 
 tests :: [Test]
 tests =
