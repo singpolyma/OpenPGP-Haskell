@@ -48,6 +48,7 @@ module Data.OpenPGP (
 	KeyAlgorithm(..),
 	SymmetricAlgorithm(..),
 	CompressionAlgorithm(..),
+	RevocationCode(..),
 	MPI(..),
 	find_key,
 	fingerprint_material,
@@ -641,6 +642,26 @@ instance BINARY_CLASS CompressionAlgorithm where
 	put = put . enum_to_word8
 	get = fmap enum_from_word8 get
 
+data RevocationCode = NoReason | KeySuperseded | KeyCompromised | KeyRetired | UserIDInvalid | RevocationCode Word8 deriving (Show, Read, Eq)
+
+instance Enum RevocationCode where
+	toEnum 00 = NoReason
+	toEnum 01 = KeySuperseded
+	toEnum 02 = KeyCompromised
+	toEnum 03 = KeyRetired
+	toEnum 32 = UserIDInvalid
+	toEnum  x = RevocationCode $ fromIntegral x
+	fromEnum NoReason       = 00
+	fromEnum KeySuperseded  = 01
+	fromEnum KeyCompromised = 02
+	fromEnum KeyRetired     = 03
+	fromEnum UserIDInvalid  = 32
+	fromEnum (RevocationCode x) = fromIntegral x
+
+instance BINARY_CLASS RevocationCode where
+	put = put . enum_to_word8
+	get = fmap enum_from_word8 get
+
 -- A message is encoded as a list that takes the entire file
 newtype Message = Message [Packet] deriving (Show, Read, Eq)
 instance BINARY_CLASS Message where
@@ -721,6 +742,7 @@ data SignatureSubpacket =
 		group_key::Bool
 	} |
 	SignerUserIDPacket String |
+	ReasonForRevocationPacket RevocationCode String |
 	UnsupportedSignatureSubpacket Word8 B.ByteString
 	deriving (Show, Read, Eq)
 
@@ -816,6 +838,8 @@ put_signature_subpacket (KeyFlagsPacket certify sign encryptC encryptS split aut
 	flag _ False = 0x0
 put_signature_subpacket (SignerUserIDPacket userid) =
 	(B.fromString userid, 28)
+put_signature_subpacket (ReasonForRevocationPacket code string) =
+	(B.concat [encode code, B.fromString string], 29)
 put_signature_subpacket (UnsupportedSignatureSubpacket tag bytes) =
 	(bytes, tag)
 
@@ -915,6 +939,9 @@ parse_signature_subpacket 27 = do
 -- SignerUserIDPacket, http://tools.ietf.org/html/rfc4880#section-5.2.3.22
 parse_signature_subpacket 28 =
 	fmap (SignerUserIDPacket . B.toString) getRemainingByteString
+-- ReasonForRevocationPacket, http://tools.ietf.org/html/rfc4880#section-5.2.3.23
+parse_signature_subpacket 29 = liftM2 ReasonForRevocationPacket get
+	(fmap B.toString getRemainingByteString)
 -- Represent unsupported packets as their tag and literal bytes
 parse_signature_subpacket tag =
 	fmap (UnsupportedSignatureSubpacket tag) getRemainingByteString
