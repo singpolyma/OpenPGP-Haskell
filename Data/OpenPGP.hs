@@ -705,6 +705,7 @@ data SignatureSubpacket =
 		notation_name::String,
 		notation_value::String
 	} |
+	PreferredHashAlgorithmsPacket [HashAlgorithm] |
 	UnsupportedSignatureSubpacket Word8 B.ByteString
 	deriving (Show, Read, Eq)
 
@@ -773,6 +774,8 @@ put_signature_subpacket (NotationDataPacket human_readable name value) =
 	valuebs = B.fromString value
 	namebs = B.fromString name
 	flag1 = if human_readable then 0x80 else 0x0
+put_signature_subpacket (PreferredHashAlgorithmsPacket algos) =
+	(B.concat $ map encode algos, 21)
 put_signature_subpacket (UnsupportedSignatureSubpacket tag bytes) =
 	(bytes, tag)
 
@@ -833,6 +836,9 @@ parse_signature_subpacket 20 = do
 	where
 	get4word8 :: Get (Word8,Word8,Word8,Word8)
 	get4word8 = liftM4 (,,,) get get get get
+-- PreferredHashAlgorithmsPacket, http://tools.ietf.org/html/rfc4880#section-5.2.3.8
+parse_signature_subpacket 21 =
+	fmap PreferredHashAlgorithmsPacket listUntilEnd
 -- Represent unsupported packets as their tag and literal bytes
 parse_signature_subpacket tag =
 	fmap (UnsupportedSignatureSubpacket tag) getRemainingByteString

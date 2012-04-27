@@ -10,6 +10,15 @@
                     1 -> do x1 <- arbitrary
                             x2 <- arbitrary
                             x3 <- arbitrary
+@@ -73,7 +72,7 @@
+                    4 -> return SHA384
+                    5 -> return SHA512
+                    6 -> return SHA224
+-                   7 -> do x1 <- arbitrary
++                   7 -> do x1 <- suchThat arbitrary (`notElem` [01,02,03,08,09,10,11])
+                            return (HashAlgorithm x1)
+                    _ -> error "FATAL ERROR: Arbitrary instance, logic bug"
+
 @@ -108,7 +107,7 @@
                     6 -> return AES192
                     7 -> return AES256
