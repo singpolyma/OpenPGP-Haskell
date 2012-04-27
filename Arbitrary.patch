@@ -30,8 +30,8 @@
 
                     _ -> error "FATAL ERROR: Arbitrary instance, logic bug"
 @@ -140 +139 @@
--                   7 -> do x1 <- arbitrary
-+                   7 -> do x1 <- fmap (map toUpper . (`showHex` "")) (arbitrary :: Gen Word64)
+-                   8 -> do x1 <- arbitrary
++                   8 -> do x1 <- fmap (map toUpper . (`showHex` "")) (arbitrary :: Gen Word64)
 @@ -143,2 +142 @@
 -                           x2 <- arbitrary
 -                           return (UnsupportedSignatureSubpacket x1 x2)
