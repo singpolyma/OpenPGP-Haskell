@@ -1,6 +1,8 @@
 *.[ao]
 *.hi
 *.swp*
+*.orig
+*.rej
 Data/OpenPGP/Arbitrary.hs
 verify
 sign
