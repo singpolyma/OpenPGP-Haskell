@@ -813,12 +813,13 @@ parse_signature_subpacket 12 = do
 		sensitive = if bitfield .&. 0x40 == 0x40 then True else False,
 		revocation_key_algorithm = kalgo,
 		revocation_key_fingerprint =
-			map toUpper $ foldr (pad `oo` showHex) "" (B.unpack fpr)
+			pad $ map toUpper $ foldr (padB `oo` showHex) "" (B.unpack fpr)
 	}
 	where
 	oo = (.) . (.)
-	pad s | odd $ length s = '0':s
-	      | otherwise = s
+	padB s | odd $ length s = '0':s
+	       | otherwise = s
+	pad s = replicate (40 - length s) '0' ++ s
 -- IssuerPacket, http://tools.ietf.org/html/rfc4880#section-5.2.3.5
 parse_signature_subpacket 16 = do
 	keyid <- get :: Get Word64
