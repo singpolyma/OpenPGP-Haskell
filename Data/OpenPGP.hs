@@ -802,7 +802,7 @@ put_signature_subpacket (PrimaryUserIDPacket isprimary) =
 put_signature_subpacket (PolicyURIPacket uri) =
 	(B.fromString uri, 26)
 put_signature_subpacket (KeyFlagsPacket certify sign encryptC encryptS split auth group) =
-	( B.singleton $
+	(B.singleton $
 		flag 0x01 certify  .|.
 		flag 0x02 sign     .|.
 		flag 0x04 encryptC .|.
