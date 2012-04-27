@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP #-}
 -- | Main implementation of the OpenPGP message format <http://tools.ietf.org/html/rfc4880>
 --
 -- The recommended way to import this module is:
@@ -61,14 +62,82 @@ import Data.Word
 import Data.Char
 import Data.Maybe
 import qualified Data.ByteString.Lazy as LZ
-import qualified Data.ByteString.Lazy.UTF8 as LZ (toString, fromString)
 
+#ifdef CEREAL
+import Data.Serialize
+import qualified Data.ByteString as B
+import qualified Data.ByteString.UTF8 as B (toString, fromString)
+#define BINARY_CLASS Serialize
+#else
 import Data.Binary
 import Data.Binary.Get
 import Data.Binary.Put
+import qualified Data.ByteString.Lazy as B
+import qualified Data.ByteString.Lazy.UTF8 as B (toString, fromString)
+#define BINARY_CLASS Binary
+#endif
+
 import qualified Codec.Compression.Zlib.Raw as Zip
 import qualified Codec.Compression.Zlib as Zlib
 import qualified Codec.Compression.BZip as BZip2
+
+#ifdef CEREAL
+getRemainingByteString :: Get B.ByteString
+getRemainingByteString = remaining >>= getByteString
+
+getSomeByteString :: Word64 -> Get B.ByteString
+getSomeByteString = getByteString . fromIntegral
+
+putSomeByteString :: B.ByteString -> Put
+putSomeByteString = putByteString
+
+unsafeRunGet :: Get a -> B.ByteString -> a
+unsafeRunGet g bs = let Right v = runGet g bs in v
+
+compress :: CompressionAlgorithm -> B.ByteString -> B.ByteString
+compress algo = toStrictBS . lazyCompress algo . toLazyBS
+
+decompress :: CompressionAlgorithm -> B.ByteString -> B.ByteString
+decompress algo = toStrictBS . lazyDecompress algo . toLazyBS
+
+toStrictBS :: LZ.ByteString -> B.ByteString
+toStrictBS = B.concat . LZ.toChunks
+
+toLazyBS :: B.ByteString -> LZ.ByteString
+toLazyBS = LZ.fromChunks . (:[])
+#else
+getRemainingByteString :: Get B.ByteString
+getRemainingByteString = getRemainingLazyByteString
+
+getSomeByteString :: Word64 -> Get B.ByteString
+getSomeByteString = getLazyByteString . fromIntegral
+
+putSomeByteString :: B.ByteString -> Put
+putSomeByteString = putLazyByteString
+
+unsafeRunGet :: Get a -> B.ByteString -> a
+unsafeRunGet = runGet
+
+compress :: CompressionAlgorithm -> B.ByteString -> B.ByteString
+compress = lazyCompress
+
+decompress :: CompressionAlgorithm -> B.ByteString -> B.ByteString
+decompress = lazyDecompress
+#endif
+
+lazyCompress :: CompressionAlgorithm -> LZ.ByteString -> LZ.ByteString
+lazyCompress Uncompressed = id
+lazyCompress ZIP          = Zip.compress
+lazyCompress ZLIB         = Zlib.compress
+lazyCompress BZip2        = BZip2.compress
+lazyCompress x            = error ("No implementation for " ++ show x)
+
+lazyDecompress :: CompressionAlgorithm -> LZ.ByteString -> LZ.ByteString
+lazyDecompress Uncompressed = id
+lazyDecompress ZIP          = Zip.decompress
+lazyDecompress ZLIB         = Zlib.decompress
+lazyDecompress BZip2        = BZip2.decompress
+lazyDecompress x            = error ("No implementation for " ++ show x)
 
 data Packet =
 	SignaturePacket {
@@ -80,7 +149,7 @@ data Packet =
 		unhashed_subpackets::[SignatureSubpacket],
 		hash_head::Word16,
 		signature::[MPI],
-		trailer::LZ.ByteString
+		trailer::B.ByteString
 	} |
 	OnePassSignaturePacket {
 		version::Word8,
@@ -107,8 +176,8 @@ data Packet =
 		s2k_hash_algorithm::Maybe HashAlgorithm,
 		s2k_salt::Maybe Word64,
 		s2k_count::Maybe Word32,
-		encrypted_data::LZ.ByteString,
-		private_hash::Maybe LZ.ByteString -- the hash may be in the encrypted data
+		encrypted_data::B.ByteString,
+		private_hash::Maybe B.ByteString -- the hash may be in the encrypted data
 	} |
 	CompressedDataPacket {
 		compression_algorithm::CompressionAlgorithm,
@@ -118,20 +187,20 @@ data Packet =
 		format::Char,
 		filename::String,
 		timestamp::Word32,
-		content::LZ.ByteString
+		content::B.ByteString
 	} |
 	UserIDPacket String |
-	UnsupportedPacket Word8 LZ.ByteString
+	UnsupportedPacket Word8 B.ByteString
 	deriving (Show, Read, Eq)
 
-instance Binary Packet where
+instance BINARY_CLASS Packet where
 	put p = do
 		-- First two bits are 1 for new packet format
 		put ((tag .|. 0xC0) :: Word8)
 		-- Use 5-octet lengths
 		put (255 :: Word8)
-		put ((fromIntegral $ LZ.length body) :: Word32)
-		putLazyByteString body
+		put ((fromIntegral $ B.length body) :: Word32)
+		putSomeByteString body
 		where
 		(body, tag) = put_packet p
 	get = do
@@ -143,8 +212,8 @@ instance Binary Packet where
 				((tag `shiftR` 2) .&. 15, parse_old_length tag)
 		len <- l
 		-- This forces the whole packet to be consumed
-		packet <- getLazyByteString (fromIntegral len)
-		return $ runGet (parse_packet t) packet
+		packet <- getSomeByteString (fromIntegral len)
+		return $ unsafeRunGet (parse_packet t) packet
 
 -- http://tools.ietf.org/html/rfc4880#section-4.2.2
 parse_new_length :: Get Word32
@@ -199,7 +268,7 @@ secret_key_fields _       = undefined -- Nothing in the spec. Maybe empty
 (!) xs = fromJust . (`lookup` xs)
 
 -- Need this seperate for trailer calculation
-signature_packet_start :: Packet -> LZ.ByteString
+signature_packet_start :: Packet -> B.ByteString
 signature_packet_start (SignaturePacket {
 	version = 4,
 	signature_type = signature_type,
@@ -207,50 +276,50 @@ signature_packet_start (SignaturePacket {
 	hash_algorithm = hash_algorithm,
 	hashed_subpackets = hashed_subpackets
 }) =
-	LZ.concat [
+	B.concat [
 		encode (0x04 :: Word8),
 		encode signature_type,
 		encode key_algorithm,
 		encode hash_algorithm,
-		encode ((fromIntegral $ LZ.length hashed_subs) :: Word16),
+		encode ((fromIntegral $ B.length hashed_subs) :: Word16),
 		hashed_subs
 	]
 	where
-	hashed_subs = LZ.concat $ map encode hashed_subpackets
+	hashed_subs = B.concat $ map encode hashed_subpackets
 signature_packet_start _ =
 	error "Trying to get start of signature packet for non signature packet."
 
 -- The trailer is just the top of the body plus some crap
-calculate_signature_trailer :: Packet -> LZ.ByteString
+calculate_signature_trailer :: Packet -> B.ByteString
 calculate_signature_trailer p =
-	LZ.concat [
+	B.concat [
 		signature_packet_start p,
 		encode (0x04 :: Word8),
 		encode (0xff :: Word8),
-		encode (fromIntegral (LZ.length $ signature_packet_start p) :: Word32)
+		encode (fromIntegral (B.length $ signature_packet_start p) :: Word32)
 	]
 
-put_packet :: (Num a) => Packet -> (LZ.ByteString, a)
+put_packet :: (Num a) => Packet -> (B.ByteString, a)
 put_packet (SignaturePacket { version = 4,
                               unhashed_subpackets = unhashed_subpackets,
                               hash_head = hash_head,
                               signature = signature,
                               trailer = trailer }) =
-	(LZ.concat $ [
+	(B.concat $ [
 		trailer_top,
-		encode (fromIntegral $ LZ.length unhashed :: Word16),
+		encode (fromIntegral $ B.length unhashed :: Word16),
 		unhashed, encode hash_head
 	] ++ map encode signature, 2)
 	where
-	trailer_top = LZ.reverse $ LZ.drop 6 $ LZ.reverse trailer
-	unhashed = LZ.concat $ map encode unhashed_subpackets
+	trailer_top = B.reverse $ B.drop 6 $ B.reverse trailer
+	unhashed = B.concat $ map encode unhashed_subpackets
 put_packet (OnePassSignaturePacket { version = version,
                                      signature_type = signature_type,
                                      hash_algorithm = hash_algorithm,
                                      key_algorithm = key_algorithm,
                                      key_id = key_id,
                                      nested = nested }) =
-	(LZ.concat [ encode version, encode signature_type,
+	(B.concat [ encode version, encode signature_type,
 	             encode hash_algorithm, encode key_algorithm,
 	             encode (fst $ head $ readHex key_id :: Word64),
 	             encode nested ], 4)
@@ -263,7 +332,7 @@ put_packet (SecretKeyPacket { version = version, timestamp = timestamp,
                               s2k_salt = s2k_salt,
                               s2k_count = s2k_count,
                               encrypted_data = encrypted_data }) =
-	(LZ.concat $ [p, encode s2k_useage] ++
+	(B.concat $ [p, encode s2k_useage] ++
 	(if s2k_useage `elem` [255, 254] then
 		[encode $ fromJust symmetric_type, encode s2k_t,
 		 encode $ fromJust s2k_hash_algo] ++
@@ -276,39 +345,32 @@ put_packet (SecretKeyPacket { version = version, timestamp = timestamp,
 	else s ++
 		-- XXX: Checksum is part of encrypted_data for V4 ONLY
 		if s2k_useage == 254 then
-			[LZ.replicate 20 0] -- TODO SHA1 Checksum
+			[B.replicate 20 0] -- TODO SHA1 Checksum
 		else
 			[encode (fromIntegral $
-				LZ.foldl (\c i -> (c + fromIntegral i) `mod` 65536)
-				(0::Integer) (LZ.concat s) :: Word16)]), 5)
+				B.foldl (\c i -> (c + fromIntegral i) `mod` 65536)
+				(0::Integer) (B.concat s) :: Word16)]), 5)
 	where
 	(Just s2k_t) = s2k_type
 	p = fst (put_packet $ PublicKeyPacket version timestamp algorithm key
-		:: (LZ.ByteString, Integer)) -- Supress warning
+		:: (B.ByteString, Integer)) -- Supress warning
 	s = map (encode . (key !)) (secret_key_fields algorithm)
 put_packet (PublicKeyPacket { version = 4, timestamp = timestamp,
                               key_algorithm = algorithm, key = key }) =
-	(LZ.concat $ [LZ.singleton 4, encode timestamp, encode algorithm] ++
+	(B.concat $ [B.singleton 4, encode timestamp, encode algorithm] ++
 		map (encode . (key !)) (public_key_fields algorithm), 6)
 put_packet (CompressedDataPacket { compression_algorithm = algorithm,
                                    message = message }) =
-	(LZ.append (encode algorithm) $ compress $ encode message, 8)
-	where
-	compress = case algorithm of
-		Uncompressed -> id
-		ZIP          -> Zip.compress
-		ZLIB         -> Zlib.compress
-		BZip2        -> BZip2.compress
-		x            -> error ("No implementation for " ++ show x)
+	(B.append (encode algorithm) $ compress algorithm $ encode message, 8)
 put_packet (LiteralDataPacket { format = format, filename = filename,
                                 timestamp = timestamp, content = content
                               }) =
-	(LZ.concat [encode format, encode filename_l, lz_filename,
+	(B.concat [encode format, encode filename_l, lz_filename,
 	            encode timestamp, content], 11)
 	where
-	filename_l  = (fromIntegral $ LZ.length lz_filename) :: Word8
-	lz_filename = LZ.fromString filename
-put_packet (UserIDPacket txt) = (LZ.fromString txt, 13)
+	filename_l  = (fromIntegral $ B.length lz_filename) :: Word8
+	lz_filename = B.fromString filename
+put_packet (UserIDPacket txt) = (B.fromString txt, 13)
 put_packet (UnsupportedPacket tag bytes) = (bytes, fromIntegral tag)
 put_packet _ = error "Unsupported Packet version or type in put_packet."
 
@@ -323,11 +385,11 @@ parse_packet  2 = do
 			key_algorithm <- get
 			hash_algorithm <- get
 			hashed_size <- fmap fromIntegral (get :: Get Word16)
-			hashed_data <- getLazyByteString hashed_size
-			let hashed = runGet listUntilEnd hashed_data
+			hashed_data <- getSomeByteString hashed_size
+			let hashed = unsafeRunGet listUntilEnd hashed_data
 			unhashed_size <- fmap fromIntegral (get :: Get Word16)
-			unhashed_data <- getLazyByteString unhashed_size
-			let unhashed = runGet listUntilEnd unhashed_data
+			unhashed_data <- getSomeByteString unhashed_size
+			let unhashed = unsafeRunGet listUntilEnd unhashed_data
 			hash_head <- get
 			signature <- listUntilEnd
 			return SignaturePacket {
@@ -339,7 +401,7 @@ parse_packet  2 = do
 				unhashed_subpackets = unhashed,
 				hash_head = hash_head,
 				signature = signature,
-				trailer = LZ.concat [encode version, encode signature_type, encode key_algorithm, encode hash_algorithm, encode (fromIntegral hashed_size :: Word16), hashed_data, LZ.pack [4, 0xff], encode ((6 + fromIntegral hashed_size) :: Word32)]
+				trailer = B.concat [encode version, encode signature_type, encode key_algorithm, encode hash_algorithm, encode (fromIntegral hashed_size :: Word16), hashed_data, B.pack [4, 0xff], encode ((6 + fromIntegral hashed_size) :: Word32)]
 			}
 		x -> fail $ "Unknown SignaturePacket version " ++ show x ++ "."
 -- OnePassSignaturePacket, http://tools.ietf.org/html/rfc4880#section-5.4
@@ -386,14 +448,14 @@ parse_packet  5 = do
 		_ ->
 			return (k Nothing Nothing Nothing Nothing Nothing)
 	if s2k_useage > 0 then do {
-		encrypted <- getRemainingLazyByteString;
+		encrypted <- getRemainingByteString;
 		return (k' encrypted Nothing)
 	} else do
 		key <- foldM (\m f -> do
 			mpi <- get :: Get MPI
 			return $ (f,mpi):m) key (secret_key_fields algorithm)
-		private_hash <- getRemainingLazyByteString
-		return ((k' LZ.empty (Just private_hash)) {key = key})
+		private_hash <- getRemainingByteString
+		return ((k' B.empty (Just private_hash)) {key = key})
 -- PublicKeyPacket, http://tools.ietf.org/html/rfc4880#section-5.5.2
 parse_packet  6 = do
 	version <- get :: Get Word8
@@ -414,51 +476,45 @@ parse_packet  6 = do
 -- CompressedDataPacket, http://tools.ietf.org/html/rfc4880#section-5.6
 parse_packet  8 = do
 	algorithm <- get
-	message <- getRemainingLazyByteString
-	let decompress = case algorithm of
-		Uncompressed -> id
-		ZIP          -> Zip.decompress
-		ZLIB         -> Zlib.decompress
-		BZip2        -> BZip2.decompress
-		x            -> error ("No implementation for " ++ show x)
+	message <- getRemainingByteString
 	return CompressedDataPacket {
 		compression_algorithm = algorithm,
-		message = runGet (get :: Get Message) (decompress message)
+		message = unsafeRunGet get (decompress algorithm message)
 	}
 -- LiteralDataPacket, http://tools.ietf.org/html/rfc4880#section-5.9
 parse_packet 11 = do
 	format <- get
 	filenameLength <- get :: Get Word8
-	filename <- getLazyByteString (fromIntegral filenameLength)
+	filename <- getSomeByteString (fromIntegral filenameLength)
 	timestamp <- get
-	content <- getRemainingLazyByteString
+	content <- getRemainingByteString
 	return LiteralDataPacket {
 		format = format,
-		filename = LZ.toString filename,
+		filename = B.toString filename,
 		timestamp = timestamp,
 		content = content
 	}
 -- UserIDPacket, http://tools.ietf.org/html/rfc4880#section-5.11
 parse_packet 13 =
-	fmap (UserIDPacket . LZ.toString) getRemainingLazyByteString
+	fmap (UserIDPacket . B.toString) getRemainingByteString
 -- Represent unsupported packets as their tag and literal bytes
-parse_packet tag = fmap (UnsupportedPacket tag) getRemainingLazyByteString
+parse_packet tag = fmap (UnsupportedPacket tag) getRemainingByteString
 
 -- | Helper method for fingerprints and such
-fingerprint_material :: Packet -> [LZ.ByteString]
+fingerprint_material :: Packet -> [B.ByteString]
 fingerprint_material (PublicKeyPacket {version = 4,
                       timestamp = timestamp,
                       key_algorithm = algorithm,
                       key = key}) =
 	[
-		LZ.singleton 0x99,
-		encode (6 + fromIntegral (LZ.length material) :: Word16),
-		LZ.singleton 4, encode timestamp, encode algorithm,
+		B.singleton 0x99,
+		encode (6 + fromIntegral (B.length material) :: Word16),
+		B.singleton 4, encode timestamp, encode algorithm,
 		material
 	]
 	where
 	material =
-		LZ.concat $ map (encode . (key !)) (public_key_fields algorithm)
+		B.concat $ map (encode . (key !)) (public_key_fields algorithm)
 -- Proxy to make SecretKeyPacket work
 fingerprint_material (SecretKeyPacket {version = 4,
                       timestamp = timestamp,
@@ -470,8 +526,8 @@ fingerprint_material (SecretKeyPacket {version = 4,
                       key = key}
 fingerprint_material p | version p `elem` [2, 3] = [n, e]
 	where
-	n = LZ.drop 2 (encode (key p ! 'n'))
-	e = LZ.drop 2 (encode (key p ! 'e'))
+	n = B.drop 2 (encode (key p ! 'n'))
+	e = B.drop 2 (encode (key p ! 'e'))
 fingerprint_material _ =
 	error "Unsupported Packet version or type in fingerprint_material."
 
@@ -502,7 +558,7 @@ instance Enum HashAlgorithm where
 	fromEnum SHA224    = 11
 	fromEnum (HashAlgorithm x) = fromIntegral x
 
-instance Binary HashAlgorithm where
+instance BINARY_CLASS HashAlgorithm where
 	put = put . enum_to_word8
 	get = fmap enum_from_word8 get
 
@@ -529,7 +585,7 @@ instance Enum KeyAlgorithm where
 	fromEnum DH      = 21
 	fromEnum (KeyAlgorithm x) = fromIntegral x
 
-instance Binary KeyAlgorithm where
+instance BINARY_CLASS KeyAlgorithm where
 	put = put . enum_to_word8
 	get = fmap enum_from_word8 get
 
@@ -548,13 +604,13 @@ instance Enum CompressionAlgorithm where
 	fromEnum BZip2        = 3
 	fromEnum (CompressionAlgorithm x) = fromIntegral x
 
-instance Binary CompressionAlgorithm where
+instance BINARY_CLASS CompressionAlgorithm where
 	put = put . enum_to_word8
 	get = fmap enum_from_word8 get
 
 -- A message is encoded as a list that takes the entire file
 newtype Message = Message [Packet] deriving (Show, Read, Eq)
-instance Binary Message where
+instance BINARY_CLASS Message where
 	put (Message xs) = mapM_ put xs
 	get = fmap Message listUntilEnd
 
@@ -569,24 +625,24 @@ signatures_and_data (Message lst) =
 	isDta _ = False
 
 newtype MPI = MPI Integer deriving (Show, Read, Eq, Ord)
-instance Binary MPI where
+instance BINARY_CLASS MPI where
 	put (MPI i) = do
-		put (((fromIntegral . LZ.length $ bytes) - 1) * 8
-			+ floor (logBase (2::Double) $ fromIntegral (bytes `LZ.index` 0))
+		put (((fromIntegral . B.length $ bytes) - 1) * 8
+			+ floor (logBase (2::Double) $ fromIntegral (bytes `B.index` 0))
 			+ 1 :: Word16)
-		putLazyByteString bytes
+		putSomeByteString bytes
 		where
-		bytes = LZ.reverse $ LZ.unfoldr (\x ->
+		bytes = B.reverse $ B.unfoldr (\x ->
 				if x == 0 then Nothing else
 					Just (fromIntegral x, x `shiftR` 8)
 			) i
 	get = do
 		length <- fmap fromIntegral (get :: Get Word16)
-		bytes <- getLazyByteString ((length + 7) `div` 8)
-		return (MPI (LZ.foldl (\a b ->
+		bytes <- getSomeByteString ((length + 7) `div` 8)
+		return (MPI (B.foldl (\a b ->
 			a `shiftL` 8 .|. fromIntegral b) 0 bytes))
 
-listUntilEnd :: (Binary a) => Get [a]
+listUntilEnd :: (BINARY_CLASS a) => Get [a]
 listUntilEnd = do
 	done <- isEmpty
 	if done then return [] else do
@@ -597,16 +653,16 @@ listUntilEnd = do
 data SignatureSubpacket =
 	SignatureCreationTimePacket Word32 |
 	IssuerPacket String |
-	UnsupportedSignatureSubpacket Word8 LZ.ByteString
+	UnsupportedSignatureSubpacket Word8 B.ByteString
 	deriving (Show, Read, Eq)
 
-instance Binary SignatureSubpacket where
+instance BINARY_CLASS SignatureSubpacket where
 	put p = do
 		-- Use 5-octet-length + 1 for tag as the first packet body octet
 		put (255 :: Word8)
-		put (fromIntegral (LZ.length body) + 1 :: Word32)
+		put (fromIntegral (B.length body) + 1 :: Word32)
 		put tag
-		putLazyByteString body
+		putSomeByteString body
 		where
 		(body, tag) = put_signature_subpacket p
 	get = do
@@ -621,8 +677,8 @@ instance Binary SignatureSubpacket where
 				return len
 		tag <- get :: Get Word8
 		-- This forces the whole packet to be consumed
-		packet <- getLazyByteString (len-1)
-		return $ runGet (parse_signature_subpacket tag) packet
+		packet <- getSomeByteString (len-1)
+		return $ unsafeRunGet (parse_signature_subpacket tag) packet
 
 -- | Find the keyid that issued a SignaturePacket
 signature_issuer :: Packet -> Maybe String
@@ -635,7 +691,7 @@ signature_issuer (SignaturePacket {hashed_subpackets = hashed,
 	      isIssuer _ = False
 signature_issuer _ = Nothing
 
-put_signature_subpacket :: SignatureSubpacket -> (LZ.ByteString, Word8)
+put_signature_subpacket :: SignatureSubpacket -> (B.ByteString, Word8)
 put_signature_subpacket (SignatureCreationTimePacket time) =
 	(encode time, 2)
 put_signature_subpacket (IssuerPacket keyid) =
@@ -652,7 +708,7 @@ parse_signature_subpacket 16 = do
 	return $ IssuerPacket (map toUpper $ showHex keyid "")
 -- Represent unsupported packets as their tag and literal bytes
 parse_signature_subpacket tag =
-	fmap (UnsupportedSignatureSubpacket tag) getRemainingLazyByteString
+	fmap (UnsupportedSignatureSubpacket tag) getRemainingByteString
 
 decode_s2k_count :: Word8 -> Word32
 decode_s2k_count c =  (16 + (fromIntegral c .&. 15)) `shiftL`

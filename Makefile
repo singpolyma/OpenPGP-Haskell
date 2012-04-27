@@ -1,5 +1,10 @@
-GHCFLAGS=-Wall -XNoCPP -fno-warn-name-shadowing -XHaskell98
-HLINTFLAGS=-XHaskell98 -XNoCPP -i 'Use camelCase' -i 'Use String' -i 'Use head' -i 'Use string literal' -i 'Use list comprehension' --utf8
+ifdef CEREAL
+GHCFLAGS=-Wall -DCEREAL -fno-warn-name-shadowing -XHaskell98
+else
+GHCFLAGS=-Wall -fno-warn-name-shadowing -XHaskell98
+endif
+
+HLINTFLAGS=-XHaskell98 -XCPP -i 'Use camelCase' -i 'Use String' -i 'Use head' -i 'Use string literal' -i 'Use list comprehension' --utf8
 VERSION=0.3
 
 .PHONY: all clean doc install debian test
@@ -28,13 +33,26 @@ README: openpgp.cabal
 	-printf ',s/        //g\n,s/^.$$//g\nw\nq\n' | ed $@
 	$(RM) .$@
 
+# XXX: Is there a way to make this just pass through $(GHCFLAGS)
+ifdef CEREAL
+dist/doc/html/openpgp/index.html: dist/setup-config Data/OpenPGP.hs
+	cabal haddock --hyperlink-source --haddock-options="--optghc=-DCEREAL"
+else
 dist/doc/html/openpgp/index.html: dist/setup-config Data/OpenPGP.hs
 	cabal haddock --hyperlink-source
+endif
 
+ifdef CEREAL
+dist/setup-config: openpgp.cabal
+	-printf '1c\nname:            openpgp-cereal\n.\n,s/binary,$$/cereal,/g\nw\nq\n' | ed openpgp.cabal
+	cabal configure
+else
 dist/setup-config: openpgp.cabal
 	cabal configure
+endif
 
 clean:
+	-printf '1c\nname:            openpgp\n.\n,s/cereal,$$/binary,/g\nw\nq\n' | ed openpgp.cabal
 	find -name '*.o' -o -name '*.hi' | xargs $(RM)
 	$(RM) sign verify keygen tests/suite
 	$(RM) -r dist dist-ghc

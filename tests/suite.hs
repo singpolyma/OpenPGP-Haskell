@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP #-}
 import Test.Framework (defaultMain, testGroup, Test)
 import Test.Framework.Providers.HUnit
 import Test.Framework.Providers.QuickCheck2
@@ -5,18 +6,30 @@ import Test.QuickCheck
 import Test.HUnit hiding (Test)
 
 import Data.Word
-import Data.Binary
 import qualified Data.OpenPGP as OpenPGP
-import qualified Data.ByteString.Lazy as LZ
+
+#ifdef CEREAL
+import Data.Serialize
+import qualified Data.ByteString as B
+
+decode' :: (Serialize a) => B.ByteString -> a
+decode' x = let Right v = decode x in v
+#else
+import Data.Binary
+import qualified Data.ByteString.Lazy as B
+
+decode' :: (Binary a) => B.ByteString -> a
+decode' = decode
+#endif
 
 instance Arbitrary OpenPGP.HashAlgorithm where
 	arbitrary = elements [OpenPGP.MD5, OpenPGP.SHA1, OpenPGP.SHA256, OpenPGP.SHA384, OpenPGP.SHA512]
 
 testSerialization :: FilePath -> Assertion
 testSerialization fp = do
-	bs <- LZ.readFile $ "tests/data/" ++ fp
-	nullShield "First" (decode bs) (\firstpass ->
-			nullShield "Second" (decode $ encode firstpass) (
+	bs <- B.readFile $ "tests/data/" ++ fp
+	nullShield "First" (decode' bs) (\firstpass ->
+			nullShield "Second" (decode' $encode firstpass) (
 				assertEqual ("for " ++ fp) firstpass
 			)
 		)
