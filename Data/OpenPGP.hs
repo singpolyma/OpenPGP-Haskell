@@ -694,6 +694,11 @@ data SignatureSubpacket =
 	RevocablePacket Bool |
 	KeyExpirationTimePacket Word32 | -- seconds after key CreationTime
 	PreferredSymmetricAlgorithmsPacket [SymmetricAlgorithm] |
+	RevocationKeyPacket {
+		sensitive::Bool,
+		revocation_key_algorithm::KeyAlgorithm,
+		revocation_key_fingerprint::String
+	} |
 	IssuerPacket String |
 	UnsupportedSignatureSubpacket Word8 B.ByteString
 	deriving (Show, Read, Eq)
@@ -743,6 +748,12 @@ put_signature_subpacket (KeyExpirationTimePacket time) =
 	(encode time, 9)
 put_signature_subpacket (PreferredSymmetricAlgorithmsPacket algos) =
 	(B.concat $ map encode algos, 11)
+put_signature_subpacket (RevocationKeyPacket sensitive kalgo fpr) =
+	(B.concat [encode bitfield, encode kalgo, fprb], 12)
+	where
+	bitfield = 0x80 .|. (if sensitive then 0x40 else 0x0) :: Word8
+	fprb = B.drop 2 $ encode (MPI fpri)
+	fpri = fst $ head $ readHex fpr
 put_signature_subpacket (IssuerPacket keyid) =
 	(encode (fst $ head $ readHex keyid :: Word64), 16)
 put_signature_subpacket (UnsupportedSignatureSubpacket tag bytes) =
@@ -769,6 +780,22 @@ parse_signature_subpacket  9 = fmap KeyExpirationTimePacket get
 -- KeyExpirationTimePacket, http://tools.ietf.org/html/rfc4880#section-5.2.3.6
 parse_signature_subpacket 11 =
 	fmap PreferredSymmetricAlgorithmsPacket listUntilEnd
+-- RevocationKeyPacket, http://tools.ietf.org/html/rfc4880#section-5.2.3.15
+parse_signature_subpacket 12 = do
+	bitfield <- get :: Get Word8
+	kalgo <- get
+	fpr <- getSomeByteString 20
+	-- bitfield must have bit 0x80 set, says the spec
+	return $ RevocationKeyPacket {
+		sensitive = if bitfield .&. 0x40 == 0x40 then True else False,
+		revocation_key_algorithm = kalgo,
+		revocation_key_fingerprint =
+			map toUpper $ foldr (pad `oo` showHex) "" (B.unpack fpr)
+	}
+	where
+	oo = (.) . (.)
+	pad s | odd $ length s = '0':s
+	      | otherwise = s
 -- IssuerPacket, http://tools.ietf.org/html/rfc4880#section-5.2.3.5
 parse_signature_subpacket 16 = do
 	keyid <- get :: Get Word64

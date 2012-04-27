@@ -19,7 +19,7 @@
                             return (SymmetricAlgorithm x1)
                     _ -> error "FATAL ERROR: Arbitrary instance, logic bug"
 
-@@ -116,7 +115,7 @@
+@@ -134,7 +133,7 @@
 
  instance Arbitrary MPI where
          arbitrary
@@ -28,6 +28,13 @@
                 return (MPI x1)
 
 
+@@ -160,5 +160,5 @@
+                            return (PreferredSymmetricAlgorithmsPacket x1)
+                    8 -> do x1 <- arbitrary
+                            x2 <- arbitrary
+-                           x3 <- arbitrary
++                           x3 <- vectorOf 40 (elements (['0'..'9'] ++ ['A'..'F']))
+                            return (RevocationKeyPacket x1 x2 x3)
 @@ -166 +165 @@
 -                   9 -> do x1 <- arbitrary
 +                   9 -> do x1 <- vectorOf 16 (elements (['0'..'9'] ++ ['A'..'F']))
