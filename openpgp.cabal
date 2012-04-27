@@ -126,6 +126,7 @@ library
 
         other-modules:
                 Data.OpenPGP.Internal
+                Data.OpenPGP.Arbitrary
 
         build-depends:
                 base == 4.*,

@@ -2,10 +2,10 @@
 import Test.Framework (defaultMain, testGroup, Test)
 import Test.Framework.Providers.HUnit
 import Test.Framework.Providers.QuickCheck2
-import Test.QuickCheck
 import Test.HUnit hiding (Test)
 
 import Data.Word
+import Data.OpenPGP.Arbitrary ()
 import qualified Data.OpenPGP as OpenPGP
 import qualified Data.OpenPGP.Internal as OpenPGP
 
@@ -22,9 +22,6 @@ import qualified Data.ByteString.Lazy as B
 decode' :: (Binary a) => B.ByteString -> a
 decode' = decode
 #endif
-
-instance Arbitrary OpenPGP.HashAlgorithm where
-	arbitrary = elements [OpenPGP.MD5, OpenPGP.SHA1, OpenPGP.SHA256, OpenPGP.SHA384, OpenPGP.SHA512]
 
 testSerialization :: FilePath -> Assertion
 testSerialization fp = do

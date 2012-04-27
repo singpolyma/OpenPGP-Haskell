@@ -1,6 +1,7 @@
 *.[ao]
 *.hi
 *.swp*
+Data/OpenPGP/Arbitrary.hs
 verify
 sign
 keygen
