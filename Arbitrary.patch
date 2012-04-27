@@ -10,6 +10,15 @@
                     1 -> do x1 <- arbitrary
                             x2 <- arbitrary
                             x3 <- arbitrary
+@@ -116,7 +115,7 @@
+
+ instance Arbitrary MPI where
+         arbitrary
+-          = do x1 <- arbitrary
++          = do x1 <- suchThat arbitrary (>=0)
+                return (MPI x1)
+
+
 @@ -133,9 +132,8 @@
                     3 -> do x1 <- arbitrary
                             x2 <- arbitrary

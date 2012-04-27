@@ -56,6 +56,7 @@ module Data.OpenPGP (
 
 import Numeric
 import Control.Monad
+import Control.Exception (assert)
 import Data.Bits
 import Data.Word
 import Data.Char
@@ -632,10 +633,11 @@ instance BINARY_CLASS MPI where
 			+ 1 :: Word16)
 		putSomeByteString bytes
 		where
-		bytes = B.reverse $ B.unfoldr (\x ->
+		bytes = if B.null bytes' then B.singleton 0 else bytes'
+		bytes' = B.reverse $ B.unfoldr (\x ->
 				if x == 0 then Nothing else
 					Just (fromIntegral x, x `shiftR` 8)
-			) i
+			) (assert (i>=0) i)
 	get = do
 		length <- fmap fromIntegral (get :: Get Word16)
 		bytes <- getSomeByteString ((length + 7) `div` 8)
