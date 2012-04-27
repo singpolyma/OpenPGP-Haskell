@@ -720,6 +720,7 @@ data SignatureSubpacket =
 		authentication::Bool,
 		group_key::Bool
 	} |
+	SignerUserIDPacket String |
 	UnsupportedSignatureSubpacket Word8 B.ByteString
 	deriving (Show, Read, Eq)
 
@@ -813,6 +814,8 @@ put_signature_subpacket (KeyFlagsPacket certify sign encryptC encryptS split aut
 	where
 	flag x True = x
 	flag _ False = 0x0
+put_signature_subpacket (SignerUserIDPacket userid) =
+	(B.fromString userid, 28)
 put_signature_subpacket (UnsupportedSignatureSubpacket tag bytes) =
 	(bytes, tag)
 
@@ -909,6 +912,9 @@ parse_signature_subpacket 27 = do
 		authentication        = flag1 .&. 0x20 == 0x20,
 		group_key             = flag1 .&. 0x80 == 0x80
 	}
+-- SignerUserIDPacket, http://tools.ietf.org/html/rfc4880#section-5.2.3.22
+parse_signature_subpacket 28 =
+	fmap (SignerUserIDPacket . B.toString) getRemainingByteString
 -- Represent unsupported packets as their tag and literal bytes
 parse_signature_subpacket tag =
 	fmap (UnsupportedSignatureSubpacket tag) getRemainingByteString
