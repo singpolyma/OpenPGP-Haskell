@@ -19,15 +19,11 @@
                 return (MPI x1)
 
 
-@@ -135,9 +134,8 @@
-                            return (TrustSignaturePacket x1 x2)
-                    4 -> do x1 <- arbitrary
-                            return (RegularExpressionPacket x1)
--                   5 -> do x1 <- arbitrary
-+                   5 -> do x1 <- fmap (map toUpper . (`showHex` "")) (arbitrary :: Gen Word64)
-                            return (IssuerPacket x1)
-                    6 -> do x1 <- arbitrary
+                    _ -> error "FATAL ERROR: Arbitrary instance, logic bug"
+@@ -140 +139 @@
+-                   6 -> do x1 <- arbitrary
++                   6 -> do x1 <- fmap (map toUpper . (`showHex` "")) (arbitrary :: Gen Word64)
+@@ -143,2 +142 @@
 -                           x2 <- arbitrary
 -                           return (UnsupportedSignatureSubpacket x1 x2)
 +                           return (UnsupportedSignatureSubpacket 105 x1)
-                    _ -> error "FATAL ERROR: Arbitrary instance, logic bug"

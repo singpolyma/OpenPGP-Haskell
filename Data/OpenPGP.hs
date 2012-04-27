@@ -659,6 +659,7 @@ data SignatureSubpacket =
 	ExportableCertificationPacket Bool |
 	TrustSignaturePacket {depth::Word8, trust::Word8} |
 	RegularExpressionPacket String |
+	RevocablePacket Bool |
 	IssuerPacket String |
 	UnsupportedSignatureSubpacket Word8 B.ByteString
 	deriving (Show, Read, Eq)
@@ -702,6 +703,8 @@ put_signature_subpacket (TrustSignaturePacket depth trust) =
 	(B.concat [encode depth, encode trust], 5)
 put_signature_subpacket (RegularExpressionPacket regex) =
 	(B.concat [B.fromString regex, B.singleton 0], 6)
+put_signature_subpacket (RevocablePacket exportable) =
+	(encode $ enum_to_word8 exportable, 7)
 put_signature_subpacket (IssuerPacket keyid) =
 	(encode (fst $ head $ readHex keyid :: Word64), 16)
 put_signature_subpacket (UnsupportedSignatureSubpacket tag bytes) =
@@ -720,6 +723,9 @@ parse_signature_subpacket  5 = liftM2 TrustSignaturePacket get get
 -- TrustSignaturePacket, http://tools.ietf.org/html/rfc4880#section-5.2.3.14
 parse_signature_subpacket  6 = fmap
 	(RegularExpressionPacket . B.toString . B.init) getRemainingByteString
+-- RevocablePacket, http://tools.ietf.org/html/rfc4880#section-5.2.3.12
+parse_signature_subpacket  7 =
+	fmap (RevocablePacket . enum_from_word8) get
 -- IssuerPacket, http://tools.ietf.org/html/rfc4880#section-5.2.3.5
 parse_signature_subpacket 16 = do
 	keyid <- get :: Get Word64
