@@ -40,6 +40,10 @@ prop_s2k_count :: Word8 -> Bool
 prop_s2k_count c =
 	c == OpenPGP.encode_s2k_count (OpenPGP.decode_s2k_count c)
 
+prop_SignatureSubpacket_serialization_loop :: OpenPGP.SignatureSubpacket -> Bool
+prop_SignatureSubpacket_serialization_loop packet =
+	packet == decode (encode packet)
+
 tests :: [Test]
 tests =
 	[
@@ -130,7 +134,8 @@ tests =
 			testCase "onepass_sig" (testSerialization "onepass_sig"),
 			testCase "uncompressed-ops-dsa.gpg" (testSerialization "uncompressed-ops-dsa.gpg"),
 			testCase "uncompressed-ops-dsa-sha384.txt.gpg" (testSerialization "uncompressed-ops-dsa-sha384.txt.gpg"),
-			testCase "uncompressed-ops-rsa.gpg" (testSerialization "uncompressed-ops-rsa.gpg")
+			testCase "uncompressed-ops-rsa.gpg" (testSerialization "uncompressed-ops-rsa.gpg"),
+			testProperty "SignatureSubpacket encode/decode" prop_SignatureSubpacket_serialization_loop
 		],
 		testGroup "S2K count" [
 			testProperty "S2K count encode reverses decode" prop_s2k_count
