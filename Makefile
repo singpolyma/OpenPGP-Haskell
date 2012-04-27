@@ -22,11 +22,9 @@ test: tests/suite
 tests/suite: tests/suite.hs Data/OpenPGP.hs Data/OpenPGP/Internal.hs Data/OpenPGP/Arbitrary.hs
 	ghc --make $(GHCFLAGS) -o $@ $^
 
-Data/OpenPGP/Arbitrary.hs: Data/OpenPGP.hs
-	derive -d Arbitrary -m Data.OpenPGP.Arbitrary -iData.OpenPGP -iTest.QuickCheck -iTest.QuickCheck.Instances -iNumeric -iData.Char -iData.Word -o $@ $^
-	-printf ',s/SignaturePacket x1 x2 x3 x4 x5 x6 x7 x8 x9)$$/signaturePacket x1 x2 x3 x4 x5 x6 x7 x8)/g\n/signaturePacket/\n-d\nw\nq\n' | ed $@
-	-printf '/return (IssuerPacket/\n-d\ni\n                   4 -> do x1 <- fmap (map toUpper . (`showHex` "")) (arbitrary :: Gen Word64)\n.\nw\nq\n' | ed $@
-	-printf '/return (UnsupportedSignatureSubpacket/\n-d\n.s/x1/105/g\n.s/x2/x1/g\nw\nq\n' | ed $@
+Data/OpenPGP/Arbitrary.hs: Data/OpenPGP.hs Arbitrary.patch
+	derive -d Arbitrary -m Data.OpenPGP.Arbitrary -iData.OpenPGP -iTest.QuickCheck -iTest.QuickCheck.Instances -iNumeric -iData.Char -iData.Word -o $@ Data/OpenPGP.hs
+	patch $@ Arbitrary.patch
 
 report.html: tests/suite.hs Data/OpenPGP.hs Data/OpenPGP/Internal.hs
 	-hlint $(HLINTFLAGS) --report $^
