@@ -30,7 +30,7 @@ testSerialization :: FilePath -> Assertion
 testSerialization fp = do
 	bs <- B.readFile $ "tests/data/" ++ fp
 	nullShield "First" (decode' bs) (\firstpass ->
-			nullShield "Second" (decode' $encode firstpass) (
+			nullShield "Second" (decode' $ encode firstpass) (
 				assertEqual ("for " ++ fp) firstpass
 			)
 		)
