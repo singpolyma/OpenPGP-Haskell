@@ -777,7 +777,7 @@ parse_signature_subpacket  7 =
 	fmap (RevocablePacket . enum_from_word8) get
 -- KeyExpirationTimePacket, http://tools.ietf.org/html/rfc4880#section-5.2.3.6
 parse_signature_subpacket  9 = fmap KeyExpirationTimePacket get
--- KeyExpirationTimePacket, http://tools.ietf.org/html/rfc4880#section-5.2.3.6
+-- PreferredSymmetricAlgorithms, http://tools.ietf.org/html/rfc4880#section-5.2.3.7
 parse_signature_subpacket 11 =
 	fmap PreferredSymmetricAlgorithmsPacket listUntilEnd
 -- RevocationKeyPacket, http://tools.ietf.org/html/rfc4880#section-5.2.3.15
