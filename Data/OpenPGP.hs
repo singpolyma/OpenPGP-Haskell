@@ -716,8 +716,7 @@ parse_signature_subpacket  3 = fmap SignatureExpirationTimePacket get
 parse_signature_subpacket  4 =
 	fmap (ExportableCertificationPacket . enum_from_word8) get
 -- TrustSignaturePacket, http://tools.ietf.org/html/rfc4880#section-5.2.3.13
-parse_signature_subpacket  5 =
-	liftM2 TrustSignaturePacket get get
+parse_signature_subpacket  5 = liftM2 TrustSignaturePacket get get
 -- TrustSignaturePacket, http://tools.ietf.org/html/rfc4880#section-5.2.3.14
 parse_signature_subpacket  6 = fmap
 	(RegularExpressionPacket . B.toString . B.init) getRemainingByteString
