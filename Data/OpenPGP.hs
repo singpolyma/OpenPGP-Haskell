@@ -708,6 +708,7 @@ data SignatureSubpacket =
 	PreferredHashAlgorithmsPacket [HashAlgorithm] |
 	PreferredCompressionAlgorithmsPacket [CompressionAlgorithm] |
 	KeyServerPreferencesPacket {keyserver_no_modify::Bool} |
+	PreferredKeyServerPacket String |
 	UnsupportedSignatureSubpacket Word8 B.ByteString
 	deriving (Show, Read, Eq)
 
@@ -782,6 +783,8 @@ put_signature_subpacket (PreferredCompressionAlgorithmsPacket algos) =
 	(B.concat $ map encode algos, 22)
 put_signature_subpacket (KeyServerPreferencesPacket no_modify) =
 	(B.singleton (if no_modify then 0x80 else 0x0), 23)
+put_signature_subpacket (PreferredKeyServerPacket uri) =
+	(B.fromString uri, 24)
 put_signature_subpacket (UnsupportedSignatureSubpacket tag bytes) =
 	(bytes, tag)
 
@@ -856,6 +859,9 @@ parse_signature_subpacket 23 = do
 	return $ KeyServerPreferencesPacket {
 		keyserver_no_modify = if flag1 == 0x80 then True else False
 	}
+-- PreferredKeyServerPacket, http://tools.ietf.org/html/rfc4880#section-5.2.3.18
+parse_signature_subpacket 24 =
+	fmap (PreferredKeyServerPacket . B.toString) getRemainingByteString
 -- Represent unsupported packets as their tag and literal bytes
 parse_signature_subpacket tag =
 	fmap (UnsupportedSignatureSubpacket tag) getRemainingByteString
