@@ -19,6 +19,15 @@
                             return (HashAlgorithm x1)
                     _ -> error "FATAL ERROR: Arbitrary instance, logic bug"
 
+@@ -90,7 +89,7 @@
+                    5 -> return ECC
+                    6 -> return ECDSA
+                    7 -> return DH
+-                   8 -> do x1 <- arbitrary
++                   8 -> do x1 <- suchThat arbitrary (`notElem` [01,02,03,16,17,18,19,21])
+                            return (KeyAlgorithm x1)
+                    _ -> error "FATAL ERROR: Arbitrary instance, logic bug"
+
 @@ -108,7 +107,7 @@
                     6 -> return AES192
                     7 -> return AES256
