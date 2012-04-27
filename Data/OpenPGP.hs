@@ -843,7 +843,7 @@ parse_signature_subpacket 20 = do
 -- PreferredHashAlgorithmsPacket, http://tools.ietf.org/html/rfc4880#section-5.2.3.8
 parse_signature_subpacket 21 =
 	fmap PreferredHashAlgorithmsPacket listUntilEnd
--- PreferredCompressionAlgorithms, http://tools.ietf.org/html/rfc4880#section-5.2.3.9
+-- PreferredCompressionAlgorithmsPacket, http://tools.ietf.org/html/rfc4880#section-5.2.3.9
 parse_signature_subpacket 22 =
 	fmap PreferredCompressionAlgorithmsPacket listUntilEnd
 -- Represent unsupported packets as their tag and literal bytes
