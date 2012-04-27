@@ -845,7 +845,7 @@ parse_signature_subpacket 20 = do
 	name <- fmap B.toString $ getSomeByteString $ fromIntegral m
 	value <- fmap B.toString $ getSomeByteString $ fromIntegral n
 	return $ NotationDataPacket {
-		human_readable = flag1 == 0x80,
+		human_readable = flag1 .&. 0x80 == 0x80,
 		notation_name = name,
 		notation_value = value
 	}
@@ -863,7 +863,7 @@ parse_signature_subpacket 23 = do
 	empty <- isEmpty
 	flag1 <- if empty then return 0 else get :: Get Word8
 	return $ KeyServerPreferencesPacket {
-		keyserver_no_modify = if flag1 == 0x80 then True else False
+		keyserver_no_modify = if flag1 .&. 0x80 == 0x80 then True else False
 	}
 -- PreferredKeyServerPacket, http://tools.ietf.org/html/rfc4880#section-5.2.3.18
 parse_signature_subpacket 24 =
