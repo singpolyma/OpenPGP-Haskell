@@ -28,6 +28,15 @@
                             return (SymmetricAlgorithm x1)
                     _ -> error "FATAL ERROR: Arbitrary instance, logic bug"
 
+@@ -121,7 +120,7 @@
+                    1 -> return ZIP
+                    2 -> return ZLIB
+                    3 -> return BZip2
+-                   4 -> do x1 <- arbitrary
++                   4 -> do x1 <- suchThat arbitrary (`notElem` [0,1,2,3])
+                            return (CompressionAlgorithm x1)
+                    _ -> error "FATAL ERROR: Arbitrary instance, logic bug"
+
 @@ -134,7 +133,7 @@
 
  instance Arbitrary MPI where
