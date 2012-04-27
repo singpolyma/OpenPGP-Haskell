@@ -46,6 +46,7 @@ module Data.OpenPGP (
 	SignatureSubpacket(..),
 	HashAlgorithm(..),
 	KeyAlgorithm(..),
+	SymmetricAlgorithm(..),
 	CompressionAlgorithm(..),
 	MPI(..),
 	find_key,
@@ -587,6 +588,35 @@ instance Enum KeyAlgorithm where
 	fromEnum (KeyAlgorithm x) = fromIntegral x
 
 instance BINARY_CLASS KeyAlgorithm where
+	put = put . enum_to_word8
+	get = fmap enum_from_word8 get
+
+data SymmetricAlgorithm = Unencrypted | IDEA | TripleDES | CAST5 | Blowfish | AES128 | AES192 | AES256 | Twofish | SymmetricAlgorithm Word8
+	deriving (Show, Read, Eq)
+
+instance Enum SymmetricAlgorithm where
+	toEnum 00 = Unencrypted
+	toEnum 01 = IDEA
+	toEnum 02 = TripleDES
+	toEnum 03 = CAST5
+	toEnum 04 = Blowfish
+	toEnum 07 = AES128
+	toEnum 08 = AES192
+	toEnum 09 = AES256
+	toEnum 10 = Twofish
+	toEnum x  = SymmetricAlgorithm $ fromIntegral x
+	fromEnum Unencrypted = 00
+	fromEnum IDEA        = 01
+	fromEnum TripleDES   = 02
+	fromEnum CAST5       = 03
+	fromEnum Blowfish    = 04
+	fromEnum AES128      = 07
+	fromEnum AES192      = 08
+	fromEnum AES256      = 09
+	fromEnum Twofish     = 10
+	fromEnum (SymmetricAlgorithm x) = fromIntegral x
+
+instance BINARY_CLASS SymmetricAlgorithm where
 	put = put . enum_to_word8
 	get = fmap enum_from_word8 get
 

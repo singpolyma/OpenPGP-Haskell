@@ -10,6 +10,15 @@
                     1 -> do x1 <- arbitrary
                             x2 <- arbitrary
                             x3 <- arbitrary
+@@ -108,7 +107,7 @@
+                    6 -> return AES192
+                    7 -> return AES256
+                    8 -> return Twofish
+-                   9 -> do x1 <- arbitrary
++                   9 -> do x1 <- suchThat arbitrary (`notElem` [00,01,02,03,04,07,08,09,10])
+                            return (SymmetricAlgorithm x1)
+                    _ -> error "FATAL ERROR: Arbitrary instance, logic bug"
+
 @@ -116,7 +115,7 @@
 
  instance Arbitrary MPI where
