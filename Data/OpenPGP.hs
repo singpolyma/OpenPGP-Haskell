@@ -710,6 +710,7 @@ data SignatureSubpacket =
 	KeyServerPreferencesPacket {keyserver_no_modify::Bool} |
 	PreferredKeyServerPacket String |
 	PrimaryUserIDPacket Bool |
+	PolicyURIPacket String |
 	UnsupportedSignatureSubpacket Word8 B.ByteString
 	deriving (Show, Read, Eq)
 
@@ -788,6 +789,8 @@ put_signature_subpacket (PreferredKeyServerPacket uri) =
 	(B.fromString uri, 24)
 put_signature_subpacket (PrimaryUserIDPacket isprimary) =
 	(encode $ enum_to_word8 isprimary, 25)
+put_signature_subpacket (PolicyURIPacket uri) =
+	(B.fromString uri, 26)
 put_signature_subpacket (UnsupportedSignatureSubpacket tag bytes) =
 	(bytes, tag)
 
@@ -868,6 +871,9 @@ parse_signature_subpacket 24 =
 -- PrimaryUserIDPacket, http://tools.ietf.org/html/rfc4880#section-5.2.3.19
 parse_signature_subpacket 25 =
 	fmap (PrimaryUserIDPacket . enum_from_word8) get
+-- PolicyURIPacket, http://tools.ietf.org/html/rfc4880#section-5.2.3.20
+parse_signature_subpacket 26 =
+	fmap (PolicyURIPacket . B.toString) getRemainingByteString
 -- Represent unsupported packets as their tag and literal bytes
 parse_signature_subpacket tag =
 	fmap (UnsupportedSignatureSubpacket tag) getRemainingByteString
