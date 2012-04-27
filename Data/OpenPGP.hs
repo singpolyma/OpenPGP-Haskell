@@ -700,6 +700,11 @@ data SignatureSubpacket =
 		revocation_key_fingerprint::String
 	} |
 	IssuerPacket String |
+	NotationDataPacket {
+		human_readable::Bool,
+		notation_name::String,
+		notation_value::String
+	} |
 	UnsupportedSignatureSubpacket Word8 B.ByteString
 	deriving (Show, Read, Eq)
 
@@ -756,6 +761,18 @@ put_signature_subpacket (RevocationKeyPacket sensitive kalgo fpr) =
 	fpri = fst $ head $ readHex fpr
 put_signature_subpacket (IssuerPacket keyid) =
 	(encode (fst $ head $ readHex keyid :: Word64), 16)
+put_signature_subpacket (NotationDataPacket human_readable name value) =
+	(B.concat [
+		B.pack [flag1,0,0,0],
+		encode (fromIntegral (B.length namebs) :: Word16),
+		encode (fromIntegral (B.length valuebs) :: Word16),
+		namebs,
+		valuebs
+	], 20)
+	where
+	valuebs = B.fromString value
+	namebs = B.fromString name
+	flag1 = if human_readable then 0x80 else 0x0
 put_signature_subpacket (UnsupportedSignatureSubpacket tag bytes) =
 	(bytes, tag)
 
@@ -802,6 +819,20 @@ parse_signature_subpacket 16 = do
 	return $ IssuerPacket (pad $ map toUpper $ showHex keyid "")
 	where
 	pad s = replicate (16 - length s) '0' ++ s
+-- NotationDataPacket, http://tools.ietf.org/html/rfc4880#section-5.2.3.16
+parse_signature_subpacket 20 = do
+	(flag1,_,_,_) <- get4word8
+	(m,n) <- liftM2 (,) get get :: Get (Word16,Word16)
+	name <- fmap B.toString $ getSomeByteString $ fromIntegral m
+	value <- fmap B.toString $ getSomeByteString $ fromIntegral n
+	return $ NotationDataPacket {
+		human_readable = flag1 == 0x80,
+		notation_name = name,
+		notation_value = value
+	}
+	where
+	get4word8 :: Get (Word8,Word8,Word8,Word8)
+	get4word8 = liftM4 (,,,) get get get get
 -- Represent unsupported packets as their tag and literal bytes
 parse_signature_subpacket tag =
 	fmap (UnsupportedSignatureSubpacket tag) getRemainingByteString
