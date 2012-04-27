@@ -675,21 +675,14 @@ instance BINARY_CLASS SignatureSubpacket where
 				fmap fromIntegral (get :: Get Word32)
 			_ -> -- One octet length, no furthur processing
 				return len
-		tag <- get :: Get Word8
+		tag <- fmap stripCrit get :: Get Word8
 		-- This forces the whole packet to be consumed
 		packet <- getSomeByteString (len-1)
 		return $ unsafeRunGet (parse_signature_subpacket tag) packet
-
--- | Find the keyid that issued a SignaturePacket
-signature_issuer :: Packet -> Maybe String
-signature_issuer (SignaturePacket {hashed_subpackets = hashed,
-                                   unhashed_subpackets = unhashed}) =
-	if length issuers > 0 then Just issuer else Nothing
-	where IssuerPacket issuer = issuers !! 0
-	      issuers = filter isIssuer hashed ++ filter isIssuer unhashed
-	      isIssuer (IssuerPacket {}) = True
-	      isIssuer _ = False
-signature_issuer _ = Nothing
+		where
+		-- TODO: Decide how to actually encode the "is critical" data
+		-- instead of just ignoring it
+		stripCrit tag = if tag .&. 0x80 == 0x80 then tag .&. 0x7f else tag
 
 put_signature_subpacket :: SignatureSubpacket -> (B.ByteString, Word8)
 put_signature_subpacket (SignatureCreationTimePacket time) =
@@ -709,6 +702,17 @@ parse_signature_subpacket 16 = do
 -- Represent unsupported packets as their tag and literal bytes
 parse_signature_subpacket tag =
 	fmap (UnsupportedSignatureSubpacket tag) getRemainingByteString
+
+-- | Find the keyid that issued a SignaturePacket
+signature_issuer :: Packet -> Maybe String
+signature_issuer (SignaturePacket {hashed_subpackets = hashed,
+                                   unhashed_subpackets = unhashed}) =
+	if length issuers > 0 then Just issuer else Nothing
+	where IssuerPacket issuer = issuers !! 0
+	      issuers = filter isIssuer hashed ++ filter isIssuer unhashed
+	      isIssuer (IssuerPacket {}) = True
+	      isIssuer _ = False
+signature_issuer _ = Nothing
 
 find_key :: (Packet -> String) -> Message -> String -> Maybe Packet
 find_key fpr (Message (x@(PublicKeyPacket {}):xs)) keyid =
