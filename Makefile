@@ -19,10 +19,10 @@ debian: debian/control
 test: tests/suite
 	tests/suite
 
-tests/suite: tests/suite.hs Data/OpenPGP.hs
+tests/suite: tests/suite.hs Data/OpenPGP.hs Data/OpenPGP/Internal.hs
 	ghc --make $(GHCFLAGS) -o $@ $^
 
-report.html: Data/OpenPGP.hs tests/suite.hs
+report.html: tests/suite.hs Data/OpenPGP.hs Data/OpenPGP/Internal.hs
 	-hlint $(HLINTFLAGS) --report $^
 
 doc: dist/doc/html/openpgp/index.html README
@@ -35,10 +35,10 @@ README: openpgp.cabal
 
 # XXX: Is there a way to make this just pass through $(GHCFLAGS)
 ifdef CEREAL
-dist/doc/html/openpgp/index.html: dist/setup-config Data/OpenPGP.hs
+dist/doc/html/openpgp/index.html: dist/setup-config Data/OpenPGP.hs Data/OpenPGP/Internal.hs
 	cabal haddock --hyperlink-source --haddock-options="--optghc=-DCEREAL"
 else
-dist/doc/html/openpgp/index.html: dist/setup-config Data/OpenPGP.hs
+dist/doc/html/openpgp/index.html: dist/setup-config Data/OpenPGP.hs Data/OpenPGP/Internal.hs
 	cabal haddock --hyperlink-source
 endif
 
@@ -60,9 +60,9 @@ clean:
 debian/control: openpgp.cabal
 	cabal-debian --update-debianization
 
-dist/build/libHSopenpgp-$(VERSION).a: openpgp.cabal dist/setup-config Data/OpenPGP.hs
+dist/build/libHSopenpgp-$(VERSION).a: openpgp.cabal dist/setup-config Data/OpenPGP.hs Data/OpenPGP/Internal.hs
 	cabal build --ghc-options="$(GHCFLAGS)"
 
-dist/openpgp-$(VERSION).tar.gz: openpgp.cabal dist/setup-config Data/OpenPGP.hs README
+dist/openpgp-$(VERSION).tar.gz: openpgp.cabal dist/setup-config README Data/OpenPGP.hs Data/OpenPGP/Internal.hs
 	cabal check
 	cabal sdist

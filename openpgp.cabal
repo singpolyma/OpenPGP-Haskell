@@ -124,6 +124,9 @@ library
         exposed-modules:
                 Data.OpenPGP
 
+        other-modules:
+                Data.OpenPGP.Internal
+
         build-depends:
                 base == 4.*,
                 bytestring,

@@ -7,6 +7,7 @@ import Test.HUnit hiding (Test)
 
 import Data.Word
 import qualified Data.OpenPGP as OpenPGP
+import qualified Data.OpenPGP.Internal as OpenPGP
 
 #ifdef CEREAL
 import Data.Serialize

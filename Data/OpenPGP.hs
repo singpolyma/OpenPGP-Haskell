@@ -51,8 +51,7 @@ module Data.OpenPGP (
 	find_key,
 	fingerprint_material,
 	signatures_and_data,
-	signature_issuer,
-	decode_s2k_count, encode_s2k_count
+	signature_issuer
 ) where
 
 import Numeric
@@ -61,6 +60,7 @@ import Data.Bits
 import Data.Word
 import Data.Char
 import Data.Maybe
+import Data.OpenPGP.Internal
 import qualified Data.ByteString.Lazy as LZ
 
 #ifdef CEREAL
@@ -709,22 +709,6 @@ parse_signature_subpacket 16 = do
 -- Represent unsupported packets as their tag and literal bytes
 parse_signature_subpacket tag =
 	fmap (UnsupportedSignatureSubpacket tag) getRemainingByteString
-
-decode_s2k_count :: Word8 -> Word32
-decode_s2k_count c =  (16 + (fromIntegral c .&. 15)) `shiftL`
-	((fromIntegral c `shiftR` 4) + 6)
-
-encode_s2k_count :: Word32 -> Word8
-encode_s2k_count iterations
-	| iterations >= 65011712 = 255
-	| decode_s2k_count result < iterations = result+1
-	| otherwise = result
-	where
-	result = fromIntegral $ (fromIntegral c `shiftL` 4) .|. (count - 16)
-	(count, c) = encode_s2k_count' (iterations `shiftR` 6) (0::Word8)
-	encode_s2k_count' count c
-		| count < 32 = (count, c)
-		| otherwise = encode_s2k_count' (count `shiftR` 1) (c+1)
 
 find_key :: (Packet -> String) -> Message -> String -> Maybe Packet
 find_key fpr (Message (x@(PublicKeyPacket {}):xs)) keyid =
