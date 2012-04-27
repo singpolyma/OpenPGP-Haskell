@@ -650,8 +650,12 @@ listUntilEnd = do
 		rest <- listUntilEnd
 		return (next:rest)
 
+-- http://tools.ietf.org/html/rfc4880#section-5.2.3.1
 data SignatureSubpacket =
 	SignatureCreationTimePacket Word32 |
+	SignatureExpirationTimePacket Word32 | -- seconds after CreationTime
+	ExportableCertificationPacket Bool |
+	TrustSignaturePacket {depth::Word8, trust::Word8} |
 	IssuerPacket String |
 	UnsupportedSignatureSubpacket Word8 B.ByteString
 	deriving (Show, Read, Eq)
@@ -687,6 +691,12 @@ instance BINARY_CLASS SignatureSubpacket where
 put_signature_subpacket :: SignatureSubpacket -> (B.ByteString, Word8)
 put_signature_subpacket (SignatureCreationTimePacket time) =
 	(encode time, 2)
+put_signature_subpacket (SignatureExpirationTimePacket time) =
+	(encode time, 3)
+put_signature_subpacket (ExportableCertificationPacket exportable) =
+	(encode $ enum_to_word8 exportable, 4)
+put_signature_subpacket (TrustSignaturePacket depth trust) =
+	(B.concat [encode depth, encode trust], 5)
 put_signature_subpacket (IssuerPacket keyid) =
 	(encode (fst $ head $ readHex keyid :: Word64), 16)
 put_signature_subpacket (UnsupportedSignatureSubpacket tag bytes) =
@@ -695,6 +705,14 @@ put_signature_subpacket (UnsupportedSignatureSubpacket tag bytes) =
 parse_signature_subpacket :: Word8 -> Get SignatureSubpacket
 -- SignatureCreationTimePacket, http://tools.ietf.org/html/rfc4880#section-5.2.3.4
 parse_signature_subpacket  2 = fmap SignatureCreationTimePacket get
+-- SignatureExpirationTimePacket, http://tools.ietf.org/html/rfc4880#section-5.2.3.10
+parse_signature_subpacket  3 = fmap SignatureExpirationTimePacket get
+-- ExportableCertificationPacket, http://tools.ietf.org/html/rfc4880#section-5.2.3.11
+parse_signature_subpacket  4 =
+	fmap (ExportableCertificationPacket . enum_from_word8) get
+-- TrustSignaturePacket, http://tools.ietf.org/html/rfc4880#section-5.2.3.13
+parse_signature_subpacket  5 =
+	liftM2 TrustSignaturePacket get get
 -- IssuerPacket, http://tools.ietf.org/html/rfc4880#section-5.2.3.5
 parse_signature_subpacket 16 = do
 	keyid <- get :: Get Word64
