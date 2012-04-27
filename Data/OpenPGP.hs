@@ -419,9 +419,11 @@ parse_packet  4 = do
 		signature_type = signature_type,
 		hash_algorithm = hash_algo,
 		key_algorithm = key_algo,
-		key_id = map toUpper $ showHex key_id "",
+		key_id = pad $ map toUpper $ showHex key_id "",
 		nested = nested
 	}
+	where
+	pad s = replicate (16 - length s) '0' ++ s
 -- SecretKeyPacket, http://tools.ietf.org/html/rfc4880#section-5.5.3
 parse_packet  5 = do
 	-- Parse PublicKey part
@@ -770,7 +772,9 @@ parse_signature_subpacket 11 =
 -- IssuerPacket, http://tools.ietf.org/html/rfc4880#section-5.2.3.5
 parse_signature_subpacket 16 = do
 	keyid <- get :: Get Word64
-	return $ IssuerPacket (map toUpper $ showHex keyid "")
+	return $ IssuerPacket (pad $ map toUpper $ showHex keyid "")
+	where
+	pad s = replicate (16 - length s) '0' ++ s
 -- Represent unsupported packets as their tag and literal bytes
 parse_signature_subpacket tag =
 	fmap (UnsupportedSignatureSubpacket tag) getRemainingByteString

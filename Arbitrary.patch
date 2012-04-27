@@ -28,11 +28,10 @@
                 return (MPI x1)
 
 
-                    _ -> error "FATAL ERROR: Arbitrary instance, logic bug"
-@@ -140 +139 @@
--                   8 -> do x1 <- arbitrary
-+                   8 -> do x1 <- fmap (map toUpper . (`showHex` "")) (arbitrary :: Gen Word64)
-@@ -143,2 +142 @@
--                           x2 <- arbitrary
--                           return (UnsupportedSignatureSubpacket x1 x2)
-+                           return (UnsupportedSignatureSubpacket 105 x1)
+@@ -166 +165 @@
+-                   9 -> do x1 <- arbitrary
++                   9 -> do x1 <- vectorOf 16 (elements (['0'..'9'] ++ ['A'..'F']))
+@@ -169,2 +168 @@
+-                            x2 <- arbitrary
+-                            return (UnsupportedSignatureSubpacket x1 x2)
++                            return (UnsupportedSignatureSubpacket 105 x1)
