@@ -171,7 +171,8 @@ data Packet =
 		version::Word8,
 		timestamp::Word32,
 		key_algorithm::KeyAlgorithm,
-		key::[(Char,MPI)]
+		key::[(Char,MPI)],
+		is_subkey::Bool
 	} |
 	SecretKeyPacket {
 		version::Word8,
@@ -185,7 +186,8 @@ data Packet =
 		s2k_salt::Maybe Word64,
 		s2k_count::Maybe Word32,
 		encrypted_data::B.ByteString,
-		private_hash::Maybe B.ByteString -- the hash may be in the encrypted data
+		private_hash::Maybe B.ByteString, -- the hash may be in the encrypted data
+		is_subkey::Bool
 	} |
 	CompressedDataPacket {
 		compression_algorithm::CompressionAlgorithm,
@@ -346,7 +348,8 @@ put_packet (SecretKeyPacket { version = version, timestamp = timestamp,
                               s2k_hash_algorithm = s2k_hash_algo,
                               s2k_salt = s2k_salt,
                               s2k_count = s2k_count,
-                              encrypted_data = encrypted_data }) =
+                              encrypted_data = encrypted_data,
+                              is_subkey = is_subkey }) =
 	(B.concat $ [p, encode s2k_useage] ++
 	(if s2k_useage `elem` [255, 254] then
 		[encode $ fromJust symmetric_type, encode s2k_t,
@@ -364,16 +367,20 @@ put_packet (SecretKeyPacket { version = version, timestamp = timestamp,
 		else
 			[encode (fromIntegral $
 				B.foldl (\c i -> (c + fromIntegral i) `mod` 65536)
-				(0::Integer) (B.concat s) :: Word16)]), 5)
+				(0::Integer) (B.concat s) :: Word16)]),
+	if is_subkey then 7 else 5)
 	where
 	(Just s2k_t) = s2k_type
-	p = fst (put_packet $ PublicKeyPacket version timestamp algorithm key
+	p = fst (put_packet $
+		PublicKeyPacket version timestamp algorithm key False
 		:: (B.ByteString, Integer)) -- Supress warning
 	s = map (encode . (key !)) (secret_key_fields algorithm)
 put_packet (PublicKeyPacket { version = 4, timestamp = timestamp,
-                              key_algorithm = algorithm, key = key }) =
+                              key_algorithm = algorithm, key = key,
+                              is_subkey = is_subkey }) =
 	(B.concat $ [B.singleton 4, encode timestamp, encode algorithm] ++
-		map (encode . (key !)) (public_key_fields algorithm), 6)
+		map (encode . (key !)) (public_key_fields algorithm),
+	if is_subkey then 14 else 6)
 put_packet (CompressedDataPacket { compression_algorithm = algorithm,
                                    message = message }) =
 	(B.append (encode algorithm) $ compress algorithm $ encode message, 8)
@@ -468,13 +475,13 @@ parse_packet  5 = do
 			return (k Nothing Nothing Nothing Nothing Nothing)
 	if s2k_useage > 0 then do {
 		encrypted <- getRemainingByteString;
-		return (k' encrypted Nothing)
+		return (k' encrypted Nothing False)
 	} else do
 		key <- foldM (\m f -> do
 			mpi <- get :: Get MPI
 			return $ (f,mpi):m) key (secret_key_fields algorithm)
 		private_hash <- getRemainingByteString
-		return ((k' B.empty (Just private_hash)) {key = key})
+		return ((k' B.empty (Just private_hash) False) {key = key})
 -- PublicKeyPacket, http://tools.ietf.org/html/rfc4880#section-5.5.2
 parse_packet  6 = do
 	version <- get :: Get Word8
@@ -489,9 +496,14 @@ parse_packet  6 = do
 				version = 4,
 				timestamp = timestamp,
 				key_algorithm = algorithm,
-				key = key
+				key = key,
+				is_subkey = False
 			}
 		x -> fail $ "Unsupported PublicKeyPacket version " ++ show x ++ "."
+-- Secret-SubKey Packet, http://tools.ietf.org/html/rfc4880#section-5.5.1.4
+parse_packet  7 = do
+	p <- parse_packet 5
+	return p {is_subkey = True}
 -- CompressedDataPacket, http://tools.ietf.org/html/rfc4880#section-5.6
 parse_packet  8 = do
 	algorithm <- get
@@ -518,6 +530,10 @@ parse_packet 11 = do
 -- UserIDPacket, http://tools.ietf.org/html/rfc4880#section-5.11
 parse_packet 13 =
 	fmap (UserIDPacket . B.toString) getRemainingByteString
+-- Public-Subkey Packet, http://tools.ietf.org/html/rfc4880#section-5.5.1.2
+parse_packet 14 = do
+	p <- parse_packet 6
+	return p {is_subkey = True}
 -- ModificationDetectionCodePacket, http://tools.ietf.org/html/rfc4880#section-5.14
 parse_packet 19 =
 	fmap ModificationDetectionCodePacket getRemainingByteString
@@ -547,7 +563,7 @@ fingerprint_material (SecretKeyPacket {version = 4,
 	fingerprint_material PublicKeyPacket {version = 4,
                       timestamp = timestamp,
                       key_algorithm = algorithm,
-                      key = key}
+                      key = key, is_subkey = False}
 fingerprint_material p | version p `elem` [2, 3] = [n, e]
 	where
 	n = B.drop 2 (encode (key p ! 'n'))
