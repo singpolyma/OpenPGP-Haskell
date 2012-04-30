@@ -13,6 +13,7 @@ module Data.OpenPGP (
 		MarkerPacket,
 		LiteralDataPacket,
 		UserIDPacket,
+		ModificationDetectionCodePacket,
 		UnsupportedPacket,
 		compression_algorithm,
 		content,
@@ -143,6 +144,9 @@ lazyDecompress ZLIB         = Zlib.decompress
 lazyDecompress BZip2        = BZip2.decompress
 lazyDecompress x            = error ("No implementation for " ++ show x)
 
+assertProp :: (a -> Bool) -> a -> a
+assertProp f x = assert (f x) x
+
 data Packet =
 	SignaturePacket {
 		version::Word8,
@@ -195,6 +199,7 @@ data Packet =
 		content::B.ByteString
 	} |
 	UserIDPacket String |
+	ModificationDetectionCodePacket B.ByteString |
 	UnsupportedPacket Word8 B.ByteString
 	deriving (Show, Read, Eq)
 
@@ -202,11 +207,16 @@ instance BINARY_CLASS Packet where
 	put p = do
 		-- First two bits are 1 for new packet format
 		put ((tag .|. 0xC0) :: Word8)
-		-- Use 5-octet lengths
-		put (255 :: Word8)
-		put ((fromIntegral $ B.length body) :: Word32)
-		putSomeByteString body
+		case tag of
+			19 -> put (assertProp (<192) blen :: Word8)
+			_  -> do
+				-- Use 5-octet lengths
+				put (255 :: Word8)
+				put (blen :: Word32)
+				putSomeByteString body
 		where
+		blen :: (Num a) => a
+		blen = fromIntegral $ B.length body
 		(body, tag) = put_packet p
 	get = do
 		tag <- get :: Get Word8
@@ -377,6 +387,7 @@ put_packet (LiteralDataPacket { format = format, filename = filename,
 	filename_l  = (fromIntegral $ B.length lz_filename) :: Word8
 	lz_filename = B.fromString filename
 put_packet (UserIDPacket txt) = (B.fromString txt, 13)
+put_packet (ModificationDetectionCodePacket bstr) = (bstr, 19)
 put_packet (UnsupportedPacket tag bytes) = (bytes, fromIntegral tag)
 put_packet _ = error "Unsupported Packet version or type in put_packet."
 
@@ -507,6 +518,9 @@ parse_packet 11 = do
 -- UserIDPacket, http://tools.ietf.org/html/rfc4880#section-5.11
 parse_packet 13 =
 	fmap (UserIDPacket . B.toString) getRemainingByteString
+-- ModificationDetectionCodePacket, http://tools.ietf.org/html/rfc4880#section-5.14
+parse_packet 19 =
+	fmap ModificationDetectionCodePacket getRemainingByteString
 -- Represent unsupported packets as their tag and literal bytes
 parse_packet tag = fmap (UnsupportedPacket tag) getRemainingByteString
 
@@ -695,7 +709,7 @@ instance BINARY_CLASS MPI where
 		bytes' = B.reverse $ B.unfoldr (\x ->
 				if x == 0 then Nothing else
 					Just (fromIntegral x, x `shiftR` 8)
-			) (assert (i>=0) i)
+			) (assertProp (>=0) i)
 	get = do
 		length <- fmap fromIntegral (get :: Get Word16)
 		bytes <- getSomeByteString ((length + 7) `div` 8)
@@ -857,7 +871,7 @@ put_signature_subpacket (FeaturesPacket supports_mdc) =
 put_signature_subpacket (SignatureTargetPacket kalgo halgo hash) =
 	(B.concat [encode kalgo, encode halgo, hash], 31)
 put_signature_subpacket (EmbeddedSignaturePacket packet) =
-	(encode (assert (isSignaturePacket packet) packet), 32)
+	(encode (assertProp isSignaturePacket packet), 32)
 put_signature_subpacket (UnsupportedSignatureSubpacket tag bytes) =
 	(bytes, tag)
 
