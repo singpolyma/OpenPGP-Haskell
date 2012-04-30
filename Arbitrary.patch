@@ -46,6 +46,15 @@
                             return (CompressionAlgorithm x1)
                     _ -> error "FATAL ERROR: Arbitrary instance, logic bug"
 
+@@ -135,7 +134,7 @@
+                    2 -> return KeyCompromised
+                    3 -> return KeyRetired
+                    4 -> return UserIDInvalid
+-                   5 -> do x1 <- arbitrary
++                   5 -> do x1 <- suchThat arbitrary (`notElem` [00,01,02,03,32])
+                            return (RevocationCode x1)
+                    _ -> error "FATAL ERROR: Arbitrary instance, logic bug"
+
 @@ -134,7 +133,7 @@
 
  instance Arbitrary MPI where
