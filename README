@@ -7,7 +7,9 @@ It defines types to represent OpenPGP messages as a series of packets
 and then defines instances of Data.Binary for each to facilitate
 encoding/decoding.
 
-For performing cryptography, see <http://hackage.haskell.org/openpgp-Crypto>
+For performing cryptography, see
+<http://hackage.haskell.org/openpgp-crypto-api> or
+<http://hackage.haskell.org/openpgp-Crypto>
 
 It is intended that you use qualified imports with this library.
 
