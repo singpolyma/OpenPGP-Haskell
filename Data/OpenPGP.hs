@@ -10,6 +10,7 @@ module Data.OpenPGP (
 		PublicKeyPacket,
 		SecretKeyPacket,
 		CompressedDataPacket,
+		MarkerPacket,
 		LiteralDataPacket,
 		UserIDPacket,
 		UnsupportedPacket,
@@ -186,6 +187,7 @@ data Packet =
 		compression_algorithm::CompressionAlgorithm,
 		message::Message
 	} |
+	MarkerPacket |
 	LiteralDataPacket {
 		format::Char,
 		filename::String,
@@ -365,6 +367,7 @@ put_packet (PublicKeyPacket { version = 4, timestamp = timestamp,
 put_packet (CompressedDataPacket { compression_algorithm = algorithm,
                                    message = message }) =
 	(B.append (encode algorithm) $ compress algorithm $ encode message, 8)
+put_packet MarkerPacket = (B.fromString "PGP", 10)
 put_packet (LiteralDataPacket { format = format, filename = filename,
                                 timestamp = timestamp, content = content
                               }) =
@@ -486,6 +489,8 @@ parse_packet  8 = do
 		compression_algorithm = algorithm,
 		message = unsafeRunGet get (decompress algorithm message)
 	}
+-- MarkerPacket, http://tools.ietf.org/html/rfc4880#section-5.8
+parse_packet 10 = return MarkerPacket
 -- LiteralDataPacket, http://tools.ietf.org/html/rfc4880#section-5.9
 parse_packet 11 = do
 	format <- get
