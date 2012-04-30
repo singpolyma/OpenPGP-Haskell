@@ -881,7 +881,7 @@ parse_signature_subpacket 12 = do
 	fpr <- getSomeByteString 20
 	-- bitfield must have bit 0x80 set, says the spec
 	return $ RevocationKeyPacket {
-		sensitive = if bitfield .&. 0x40 == 0x40 then True else False,
+		sensitive = bitfield .&. 0x40 == 0x40,
 		revocation_key_algorithm = kalgo,
 		revocation_key_fingerprint =
 			pad $ map toUpper $ foldr (padB `oo` showHex) "" (B.unpack fpr)
@@ -922,7 +922,7 @@ parse_signature_subpacket 23 = do
 	empty <- isEmpty
 	flag1 <- if empty then return 0 else get :: Get Word8
 	return $ KeyServerPreferencesPacket {
-		keyserver_no_modify = if flag1 .&. 0x80 == 0x80 then True else False
+		keyserver_no_modify = flag1 .&. 0x80 == 0x80
 	}
 -- PreferredKeyServerPacket, http://tools.ietf.org/html/rfc4880#section-5.2.3.18
 parse_signature_subpacket 24 =
