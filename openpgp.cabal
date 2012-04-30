@@ -126,7 +126,6 @@ library
 
         other-modules:
                 Data.OpenPGP.Internal
-                Data.OpenPGP.Arbitrary
 
         build-depends:
                 base == 4.*,
@@ -140,6 +139,9 @@ test-suite tests
         type:       exitcode-stdio-1.0
         main-is:    tests/suite.hs
 
+        other-modules:
+                Data.OpenPGP.Arbitrary
+
         build-depends:
                 base == 4.*,
                 bytestring,
@@ -149,6 +151,7 @@ test-suite tests
                 bzlib,
                 HUnit,
                 QuickCheck >= 2.4.1.1,
+                quickcheck-instances,
                 test-framework,
                 test-framework-hunit,
                 test-framework-quickcheck2
