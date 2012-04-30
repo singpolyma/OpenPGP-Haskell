@@ -744,6 +744,11 @@ data SignatureSubpacket =
 	SignerUserIDPacket String |
 	ReasonForRevocationPacket RevocationCode String |
 	FeaturesPacket {supports_mdc::Bool} |
+	SignatureTargetPacket {
+		target_key_algorithm::KeyAlgorithm,
+		target_hash_algorithm::HashAlgorithm,
+		hash::B.ByteString
+	} |
 	UnsupportedSignatureSubpacket Word8 B.ByteString
 	deriving (Show, Read, Eq)
 
@@ -843,6 +848,8 @@ put_signature_subpacket (ReasonForRevocationPacket code string) =
 	(B.concat [encode code, B.fromString string], 29)
 put_signature_subpacket (FeaturesPacket supports_mdc) =
 	(B.singleton $ if supports_mdc then 0x01 else 0x00, 30)
+put_signature_subpacket (SignatureTargetPacket kalgo halgo hash) =
+	(B.concat [encode kalgo, encode halgo, hash], 31)
 put_signature_subpacket (UnsupportedSignatureSubpacket tag bytes) =
 	(bytes, tag)
 
@@ -952,6 +959,9 @@ parse_signature_subpacket 30 = do
 	return $  FeaturesPacket {
 		supports_mdc = flag1 .&. 0x01 == 0x01
 	}
+-- SignatureTargetPacket, http://tools.ietf.org/html/rfc4880#section-5.2.3.25
+parse_signature_subpacket 31 =
+	liftM3 SignatureTargetPacket get get getRemainingByteString
 -- Represent unsupported packets as their tag and literal bytes
 parse_signature_subpacket tag =
 	fmap (UnsupportedSignatureSubpacket tag) getRemainingByteString
