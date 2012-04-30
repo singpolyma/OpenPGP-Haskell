@@ -289,8 +289,8 @@ signature_packet_start (SignaturePacket {
 	]
 	where
 	hashed_subs = B.concat $ map encode hashed_subpackets
-signature_packet_start _ =
-	error "Trying to get start of signature packet for non signature packet."
+signature_packet_start x =
+	error ("Trying to get start of signature packet for: " ++ show x)
 
 -- The trailer is just the top of the body plus some crap
 calculate_signature_trailer :: Packet -> B.ByteString
@@ -749,6 +749,7 @@ data SignatureSubpacket =
 		target_hash_algorithm::HashAlgorithm,
 		hash::B.ByteString
 	} |
+	EmbeddedSignaturePacket Packet |
 	UnsupportedSignatureSubpacket Word8 B.ByteString
 	deriving (Show, Read, Eq)
 
@@ -850,6 +851,8 @@ put_signature_subpacket (FeaturesPacket supports_mdc) =
 	(B.singleton $ if supports_mdc then 0x01 else 0x00, 30)
 put_signature_subpacket (SignatureTargetPacket kalgo halgo hash) =
 	(B.concat [encode kalgo, encode halgo, hash], 31)
+put_signature_subpacket (EmbeddedSignaturePacket packet) =
+	(encode (assert (isSignaturePacket packet) packet), 32)
 put_signature_subpacket (UnsupportedSignatureSubpacket tag bytes) =
 	(bytes, tag)
 
@@ -962,6 +965,12 @@ parse_signature_subpacket 30 = do
 -- SignatureTargetPacket, http://tools.ietf.org/html/rfc4880#section-5.2.3.25
 parse_signature_subpacket 31 =
 	liftM3 SignatureTargetPacket get get getRemainingByteString
+-- EmbeddedSignaturePacket, http://tools.ietf.org/html/rfc4880#section-5.2.3.26
+parse_signature_subpacket 32 =
+	fmap (EmbeddedSignaturePacket . forceSignature) get
+	where
+	forceSignature x@(SignaturePacket {}) = x
+	forceSignature _ = error "EmbeddedSignature must contain signature"
 -- Represent unsupported packets as their tag and literal bytes
 parse_signature_subpacket tag =
 	fmap (UnsupportedSignatureSubpacket tag) getRemainingByteString
