@@ -883,7 +883,7 @@ parse_signature_subpacket 12 = do
 	kalgo <- get
 	fpr <- getSomeByteString 20
 	-- bitfield must have bit 0x80 set, says the spec
-	return $ RevocationKeyPacket {
+	return RevocationKeyPacket {
 		sensitive = bitfield .&. 0x40 == 0x40,
 		revocation_key_algorithm = kalgo,
 		revocation_key_fingerprint =
@@ -906,7 +906,7 @@ parse_signature_subpacket 20 = do
 	(m,n) <- liftM2 (,) get get :: Get (Word16,Word16)
 	name <- fmap B.toString $ getSomeByteString $ fromIntegral m
 	value <- fmap B.toString $ getSomeByteString $ fromIntegral n
-	return $ NotationDataPacket {
+	return NotationDataPacket {
 		human_readable = flag1 .&. 0x80 == 0x80,
 		notation_name = name,
 		notation_value = value
@@ -924,7 +924,7 @@ parse_signature_subpacket 22 =
 parse_signature_subpacket 23 = do
 	empty <- isEmpty
 	flag1 <- if empty then return 0 else get :: Get Word8
-	return $ KeyServerPreferencesPacket {
+	return KeyServerPreferencesPacket {
 		keyserver_no_modify = flag1 .&. 0x80 == 0x80
 	}
 -- PreferredKeyServerPacket, http://tools.ietf.org/html/rfc4880#section-5.2.3.18
@@ -940,7 +940,7 @@ parse_signature_subpacket 26 =
 parse_signature_subpacket 27 = do
 	empty <- isEmpty
 	flag1 <- if empty then return 0 else get :: Get Word8
-	return $ KeyFlagsPacket {
+	return KeyFlagsPacket {
 		certify_keys          = flag1 .&. 0x01 == 0x01,
 		sign_data             = flag1 .&. 0x02 == 0x02,
 		encrypt_communication = flag1 .&. 0x04 == 0x04,
@@ -959,7 +959,7 @@ parse_signature_subpacket 29 = liftM2 ReasonForRevocationPacket get
 parse_signature_subpacket 30 = do
 	empty <- isEmpty
 	flag1 <- if empty then return 0 else get :: Get Word8
-	return $  FeaturesPacket {
+	return FeaturesPacket {
 		supports_mdc = flag1 .&. 0x01 == 0x01
 	}
 -- SignatureTargetPacket, http://tools.ietf.org/html/rfc4880#section-5.2.3.25
