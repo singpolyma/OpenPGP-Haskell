@@ -887,7 +887,7 @@ put_signature_subpacket (FeaturesPacket supports_mdc) =
 put_signature_subpacket (SignatureTargetPacket kalgo halgo hash) =
 	(B.concat [encode kalgo, encode halgo, hash], 31)
 put_signature_subpacket (EmbeddedSignaturePacket packet) =
-	(encode (assertProp isSignaturePacket packet), 32)
+	(fst $ put_packet (assertProp isSignaturePacket packet), 32)
 put_signature_subpacket (UnsupportedSignatureSubpacket tag bytes) =
 	(bytes, tag)
 
@@ -1002,7 +1002,7 @@ parse_signature_subpacket 31 =
 	liftM3 SignatureTargetPacket get get getRemainingByteString
 -- EmbeddedSignaturePacket, http://tools.ietf.org/html/rfc4880#section-5.2.3.26
 parse_signature_subpacket 32 =
-	fmap (EmbeddedSignaturePacket . forceSignature) get
+	fmap (EmbeddedSignaturePacket . forceSignature) (parse_packet 2)
 	where
 	forceSignature x@(SignaturePacket {}) = x
 	forceSignature _ = error "EmbeddedSignature must contain signature"
