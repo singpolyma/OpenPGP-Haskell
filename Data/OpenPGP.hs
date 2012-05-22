@@ -403,7 +403,26 @@ parse_packet :: Word8 -> Get Packet
 parse_packet  2 = do
 	version <- get
 	case version of
-		3 -> error "V3 signatures are not supported yet" -- TODO: V3 sigs
+		3 -> do
+			_ <- fmap (assertProp (==5)) (get :: Get Word8)
+			signature_type <- get
+			creation_time <- get :: Get Word32
+			key_id <- get :: Get Word64
+			key_algorithm <- get
+			hash_algorithm <- get
+			hash_head <- get
+			signature <- listUntilEnd
+			return SignaturePacket {
+				version = version,
+				signature_type = signature_type,
+				key_algorithm = key_algorithm,
+				hash_algorithm = hash_algorithm,
+				hashed_subpackets = [],
+				unhashed_subpackets = [],
+				hash_head = hash_head,
+				signature = signature,
+				trailer = B.concat [encode creation_time, encode key_id] -- TODO: put this somewhere better
+			}
 		4 -> do
 			signature_type <- get
 			key_algorithm <- get
