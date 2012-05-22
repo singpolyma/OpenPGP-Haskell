@@ -403,7 +403,26 @@ parse_packet :: Word8 -> Get Packet
 parse_packet  2 = do
 	version <- get
 	case version of
-		3 -> error "V3 signatures are not supported yet" -- TODO: V3 sigs
+		3 -> do
+			fivelength <- fmap fromIntegral (get :: Get Word8) -- TODO: must be 5
+			signature_type <- get
+			creation_time <- get :: Get Word32
+			key_id <- get :: Get Word64
+			key_algorithm <- get
+			hash_algorithm <- get
+			hash_head <- get
+			signature <- listUntilEnd
+                        return SignaturePacket {
+				version = version,
+				signature_type = signature_type,
+				key_algorithm = key_algorithm,
+				hash_algorithm = hash_algorithm,
+				hashed_subpackets = [],
+				unhashed_subpackets = [],
+				hash_head = hash_head,
+				signature = signature,
+				trailer = B.concat [encode creation_time, encode key_id] -- TODO: put this somewhere better
+                        }
 		4 -> do
 			signature_type <- get
 			key_algorithm <- get
@@ -486,6 +505,20 @@ parse_packet  5 = do
 parse_packet  6 = do
 	version <- get :: Get Word8
 	case version of
+		3 -> do
+			timestamp <- get
+			days_of_validity <- get :: Get Word16 -- TODO: preserve this somehow
+			algorithm <- get
+			key <- mapM (\f -> do
+				mpi <- get :: Get MPI
+				return (f, mpi)) (public_key_fields algorithm)
+			return PublicKeyPacket {
+				version = version,
+				timestamp = timestamp,
+				key_algorithm = algorithm,
+				key = key,
+				is_subkey = False
+			}
 		4 -> do
 			timestamp <- get
 			algorithm <- get
