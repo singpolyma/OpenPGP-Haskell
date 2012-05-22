@@ -402,7 +402,8 @@ parse_packet :: Word8 -> Get Packet
 -- SignaturePacket, http://tools.ietf.org/html/rfc4880#section-5.2
 parse_packet  2 = do
 	version <- get
-	case version of
+	let fudged_version = if version == 2 then 3 else version
+	case fudged_version of
 		3 -> do
 			fivelength <- fmap fromIntegral (get :: Get Word8) -- TODO: must be 5
 			signature_type <- get
