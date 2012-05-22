@@ -403,7 +403,7 @@ parse_packet :: Word8 -> Get Packet
 parse_packet  2 = do
 	version <- get
 	case version of
-		3 -> do
+		_ | version `elem` [2,3] -> do
 			_ <- fmap (assertProp (==5)) (get :: Get Word8)
 			signature_type <- get
 			creation_time <- get :: Get Word32
