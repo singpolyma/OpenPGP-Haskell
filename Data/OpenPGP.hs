@@ -505,6 +505,18 @@ parse_packet  5 = do
 parse_packet  6 = do
 	version <- get :: Get Word8
 	case version of
+		3 -> do
+			timestamp <- get
+			_ <- get :: Get Word16 -- TODO: preserve days_of_validity somehow
+			algorithm <- get
+			key <- mapM (\f -> fmap ((,)f) get) (public_key_fields algorithm)
+			return PublicKeyPacket {
+				version = version,
+				timestamp = timestamp,
+				key_algorithm = algorithm,
+				key = key,
+				is_subkey = False
+			}
 		4 -> do
 			timestamp <- get
 			algorithm <- get
