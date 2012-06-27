@@ -7,6 +7,7 @@
 module Data.OpenPGP (
 	Packet(
 		OnePassSignaturePacket,
+		SymmetricKeyEncryptedSessionKeyPacket,
 		PublicKeyPacket,
 		SecretKeyPacket,
 		CompressedDataPacket,
@@ -162,6 +163,12 @@ data Packet =
 		hash_head::Word16,
 		signature::[MPI],
 		trailer::B.ByteString
+	} |
+	SymmetricKeyEncryptedSessionKeyPacket {
+		version::Word8,
+		symmetric_algorithm::SymmetricAlgorithm,
+		s2k_useage::Word8,
+		encrypted_sessionkey::B.ByteString
 	} |
 	OnePassSignaturePacket {
 		version::Word8,
@@ -374,6 +381,11 @@ put_packet (SignaturePacket { version = 4,
 	where
 	trailer_top = B.reverse $ B.drop 6 $ B.reverse trailer
 	unhashed = B.concat $ map encode unhashed_subpackets
+put_packet (SymmetricKeyEncryptedSessionKeyPacket { version = version,
+                                                    symmetric_algorithm = symmetric_algorithm,
+                                                    s2k_useage = s2k_useage,
+                                                    encrypted_sessionkey = encrypted_sessionkey}) =
+	(B.concat [encode version, encode symmetric_algorithm, encode s2k_useage, encode encrypted_sessionkey], 3)
 put_packet (OnePassSignaturePacket { version = version,
                                      signature_type = signature_type,
                                      hash_algorithm = hash_algorithm,
@@ -507,6 +519,18 @@ parse_packet  2 = do
 		x -> fail $ "Unknown SignaturePacket version " ++ show x ++ "."
 	where
 	pad s = replicate (16 - length s) '0' ++ s
+-- SymmetricKeyEncryptedSessionKeyPacket, http://tools.ietf.org/html/rfc4880#section-5.3
+parse_packet  3 = do
+	version <- get
+	symmetric_algorithm <- get
+	s2k_useage <- get
+	encrypted_sessionkey <- getRemainingByteString
+	return SymmetricKeyEncryptedSessionKeyPacket {
+		version = version,
+		symmetric_algorithm = symmetric_algorithm,
+		s2k_useage = s2k_useage,
+		encrypted_sessionkey = encrypted_sessionkey
+	}
 -- OnePassSignaturePacket, http://tools.ietf.org/html/rfc4880#section-5.4
 parse_packet  4 = do
 	version <- get
