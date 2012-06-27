@@ -159,6 +159,12 @@ data Packet =
 		signature::[MPI],
 		trailer::B.ByteString
 	} |
+        SymmetricKeyEncryptedSessionKeyPacket {
+                version::Word8,
+                symmetric_algo::SymmetricAlgorithm,
+                s2k_useage :: Word8,
+                encrypted_sessionkey :: B.ByteString
+                } |
 	OnePassSignaturePacket {
 		version::Word8,
 		signature_type::Word8,
@@ -333,6 +339,13 @@ put_packet (SignaturePacket { version = 4,
 	where
 	trailer_top = B.reverse $ B.drop 6 $ B.reverse trailer
 	unhashed = B.concat $ map encode unhashed_subpackets
+
+put_packet (SymmetricKeyEncryptedSessionKeyPacket { version = version,
+                                                    symmetric_algo = symmetric_algo,
+                                                    s2k_useage = s2k_useage,
+                                                    encrypted_sessionkey = encrypted_sessionkey}) = 
+  (B.concat [encode version, encode symmetric_algo, encode s2k_useage, encode encrypted_sessionkey], 3)
+
 put_packet (OnePassSignaturePacket { version = version,
                                      signature_type = signature_type,
                                      hash_algorithm = hash_algorithm,
@@ -432,6 +445,18 @@ parse_packet  2 = do
 				trailer = B.concat [encode version, encode signature_type, encode key_algorithm, encode hash_algorithm, encode (fromIntegral hashed_size :: Word16), hashed_data, B.pack [4, 0xff], encode ((6 + fromIntegral hashed_size) :: Word32)]
 			}
 		x -> fail $ "Unknown SignaturePacket version " ++ show x ++ "."
+-- SymmetricKeyEncryptedSessionKeyPacket, http://tools.ietf.org/html/rfc4880#section-5.3
+parse_packet  3 = do
+  version <- get
+  symmetric_algo <- get
+  s2k_useage <- get
+  encrypted_sessionkey <- getRemainingByteString
+  return SymmetricKeyEncryptedSessionKeyPacket { 
+    version = version,
+    symmetric_algo = symmetric_algo,
+    s2k_useage = s2k_useage,
+    encrypted_sessionkey = encrypted_sessionkey
+    }
 -- OnePassSignaturePacket, http://tools.ietf.org/html/rfc4880#section-5.4
 parse_packet  4 = do
 	version <- get
