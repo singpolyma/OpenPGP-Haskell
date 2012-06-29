@@ -13,6 +13,7 @@ module Data.OpenPGP (
 		CompressedDataPacket,
 		MarkerPacket,
 		LiteralDataPacket,
+		TrustPacket,
 		UserIDPacket,
 		EncryptedDataPacket,
 		ModificationDetectionCodePacket,
@@ -217,6 +218,7 @@ data Packet =
 		timestamp::Word32,
 		content::B.ByteString
 	} |
+	TrustPacket B.ByteString |
 	UserIDPacket String |
 	EncryptedDataPacket {
 		version::Word8, -- 0 for old-skool no-MDC (tag 9)
@@ -478,6 +480,7 @@ put_packet (LiteralDataPacket { format = format, filename = filename,
 	where
 	filename_l  = (fromIntegral $ B.length lz_filename) :: Word8
 	lz_filename = B.fromString filename
+put_packet (TrustPacket bytes) = (bytes, 12)
 put_packet (UserIDPacket txt) = (B.fromString txt, 13)
 put_packet (EncryptedDataPacket 0 encrypted_data) = (encrypted_data, 9)
 put_packet (EncryptedDataPacket version encrypted_data) =
@@ -655,6 +658,8 @@ parse_packet 11 = do
 		timestamp = timestamp,
 		content = content
 	}
+-- TrustPacket, http://tools.ietf.org/html/rfc4880#section-5.10
+parse_packet 12 = fmap TrustPacket getRemainingByteString
 -- UserIDPacket, http://tools.ietf.org/html/rfc4880#section-5.11
 parse_packet 13 =
 	fmap (UserIDPacket . B.toString) getRemainingByteString
