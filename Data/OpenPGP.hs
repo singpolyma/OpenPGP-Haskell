@@ -14,6 +14,7 @@ module Data.OpenPGP (
 		SymetricallyEncryptedDataPacket,
 		MarkerPacket,
 		LiteralDataPacket,
+		TrustPacket,
 		UserIDPacket,
 		ModificationDetectionCodePacket,
 		UnsupportedPacket,
@@ -215,6 +216,7 @@ data Packet =
 		timestamp::Word32,
 		content::B.ByteString
 	} |
+	TrustPacket B.ByteString |
 	UserIDPacket String |
 	ModificationDetectionCodePacket B.ByteString |
 	UnsupportedPacket Word8 B.ByteString
@@ -460,6 +462,7 @@ put_packet (LiteralDataPacket { format = format, filename = filename,
 	where
 	filename_l  = (fromIntegral $ B.length lz_filename) :: Word8
 	lz_filename = B.fromString filename
+put_packet (TrustPacket bytes) = (bytes, 12)
 put_packet (UserIDPacket txt) = (B.fromString txt, 13)
 put_packet (ModificationDetectionCodePacket bstr) = (bstr, 19)
 put_packet (UnsupportedPacket tag bytes) = (bytes, fromIntegral tag)
@@ -644,6 +647,8 @@ parse_packet 11 = do
 		timestamp = timestamp,
 		content = content
 	}
+-- TrustPacket, http://tools.ietf.org/html/rfc4880#section-5.10
+parse_packet 12 = fmap TrustPacket getRemainingByteString
 -- UserIDPacket, http://tools.ietf.org/html/rfc4880#section-5.11
 parse_packet 13 =
 	fmap (UserIDPacket . B.toString) getRemainingByteString
