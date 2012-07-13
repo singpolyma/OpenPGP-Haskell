@@ -211,6 +211,9 @@ data Packet =
 	} |
         TrustPacket B.ByteString | 
 	UserIDPacket String |
+        UserAttributePacket {
+          user_attribute_subpackets :: [(Word8, B.ByteString)] 
+        }|
 	ModificationDetectionCodePacket B.ByteString |
 	UnsupportedPacket Word8 B.ByteString
 	deriving (Show, Read, Eq)
@@ -414,6 +417,15 @@ put_packet (LiteralDataPacket { format = format, filename = filename,
 put_packet (TrustPacket bytes) = (bytes, 12)
 put_packet (UserIDPacket txt) = (B.fromString txt, 13)
 put_packet (ModificationDetectionCodePacket bstr) = (bstr, 19)
+put_packet (UserAttributePacket ps) =
+  let bs = B.concat $ map asubp ps
+      asubp (t, p) = runPut $ do
+        -- Use 5-octet-length + 1 for tag as the first packet body octet
+        put (255 :: Word8)
+        put (fromIntegral (B.length p) + 1 :: Word32)
+        putLazyByteString p
+  in (bs, 17)
+
 put_packet (UnsupportedPacket tag bytes) = (bytes, fromIntegral tag)
 put_packet _ = error "Unsupported Packet version or type in put_packet."
 
@@ -545,7 +557,6 @@ parse_packet  8 = do
 	}
 -- SymmetricallyEncryptedDataPacket, http://tools.ietf.org/html/rfc4880#section-5.7
 parse_packet  9 = fmap SymetricallyEncryptedDataPacket getRemainingByteString
-
 -- MarkerPacket, http://tools.ietf.org/html/rfc4880#section-5.8
 parse_packet 10 = return MarkerPacket
 -- LiteralDataPacket, http://tools.ietf.org/html/rfc4880#section-5.9
@@ -564,8 +575,19 @@ parse_packet 11 = do
 -- TrustPacket, http://tools.ietf.org/html/rfc4880#section-5.10
 parse_packet 12 = fmap TrustPacket getRemainingByteString
 -- UserIDPacket, http://tools.ietf.org/html/rfc4880#section-5.11
-parse_packet 13 =
-	fmap (UserIDPacket . B.toString) getRemainingByteString
+parse_packet 13 = fmap (UserIDPacket . B.toString) getRemainingByteString
+-- UserAttribute Packet, http://tools.ietf.org/html/rfc4880#section-5.12
+parse_packet 17 = 
+  let parse_sub_packet :: [(Word8, B.ByteString)] -> Get [(Word8, B.ByteString)]
+      parse_sub_packet ps = do
+        e <- isEmpty
+        if e then return ps else do
+          len <- fmap fromIntegral parse_new_length
+          t <- getWord8
+          bytes <- getSomeByteString len
+          return ((t, bytes):ps)
+  in fmap UserAttributePacket $ parse_sub_packet []
+  
 -- Public-Subkey Packet, http://tools.ietf.org/html/rfc4880#section-5.5.1.2
 parse_packet 14 = do
 	p <- parse_packet 6
@@ -834,15 +856,7 @@ instance BINARY_CLASS SignatureSubpacket where
 		where
 		(body, tag) = put_signature_subpacket p
 	get = do
-		len <- fmap fromIntegral (get :: Get Word8)
-		len <- case len of
-			_ | len > 190 && len < 255 -> do -- Two octet length
-				second <- fmap fromIntegral (get :: Get Word8)
-				return $ ((len - 192) `shiftR` 8) + second + 192
-			255 -> -- Five octet length
-				fmap fromIntegral (get :: Get Word32)
-			_ -> -- One octet length, no furthur processing
-				return len
+		len <- fmap fromIntegral parse_new_length
 		tag <- fmap stripCrit get :: Get Word8
 		-- This forces the whole packet to be consumed
 		packet <- getSomeByteString (len-1)
