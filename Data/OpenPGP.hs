@@ -16,6 +16,7 @@ module Data.OpenPGP (
 		LiteralDataPacket,
 		TrustPacket,
 		UserIDPacket,
+		UserAttributePacket,
 		ModificationDetectionCodePacket,
 		UnsupportedPacket,
 		compression_algorithm,
@@ -218,6 +219,7 @@ data Packet =
 	} |
 	TrustPacket B.ByteString |
 	UserIDPacket String |
+	UserAttributePacket [(Word8, B.ByteString)] |
 	ModificationDetectionCodePacket B.ByteString |
 	UnsupportedPacket Word8 B.ByteString
 	deriving (Show, Read, Eq)
@@ -465,6 +467,14 @@ put_packet (LiteralDataPacket { format = format, filename = filename,
 put_packet (TrustPacket bytes) = (bytes, 12)
 put_packet (UserIDPacket txt) = (B.fromString txt, 13)
 put_packet (ModificationDetectionCodePacket bstr) = (bstr, 19)
+put_packet (UserAttributePacket ps) = (bs, 17)
+	where
+		bs = B.concat $ map asubp ps
+		asubp (_, p) = runPut $ do
+			-- Use 5-octet-length + 1 for tag as the first packet body octet
+			put (255 :: Word8)
+			put (fromIntegral (B.length p) + 1 :: Word32)
+			putSomeByteString p
 put_packet (UnsupportedPacket tag bytes) = (bytes, fromIntegral tag)
 put_packet x = error ("Unsupported Packet version or type in put_packet: " ++ show x)
 
@@ -650,8 +660,17 @@ parse_packet 11 = do
 -- TrustPacket, http://tools.ietf.org/html/rfc4880#section-5.10
 parse_packet 12 = fmap TrustPacket getRemainingByteString
 -- UserIDPacket, http://tools.ietf.org/html/rfc4880#section-5.11
-parse_packet 13 =
-	fmap (UserIDPacket . B.toString) getRemainingByteString
+parse_packet 13 = fmap (UserIDPacket . B.toString) getRemainingByteString
+-- UserAttribute Packet, http://tools.ietf.org/html/rfc4880#section-5.12
+parse_packet 17 = fmap UserAttributePacket $ parse_sub_packet []
+	where
+	parse_sub_packet ps = do
+		e <- isEmpty
+		if e then return ps else do
+			len <- fmap fromIntegral parse_new_length
+			t <- get :: Get Word8
+			bytes <- getSomeByteString len
+			return ((t, bytes):ps)
 -- Public-Subkey Packet, http://tools.ietf.org/html/rfc4880#section-5.5.1.2
 parse_packet 14 = do
 	p <- parse_packet 6
