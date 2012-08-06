@@ -24,6 +24,8 @@ module Data.OpenPGP (
 		hashed_subpackets,
 		hash_head,
 		key,
+		is_subkey,
+		v3_days_of_validity,
 		key_algorithm,
 		key_id,
 		message,
@@ -65,6 +67,7 @@ import Data.Bits
 import Data.Word
 import Data.Char
 import Data.Maybe
+import Data.List
 import Data.OpenPGP.Internal
 import qualified Data.ByteString.Lazy as LZ
 
@@ -172,7 +175,8 @@ data Packet =
 		timestamp::Word32,
 		key_algorithm::KeyAlgorithm,
 		key::[(Char,MPI)],
-		is_subkey::Bool
+		is_subkey::Bool,
+		v3_days_of_validity::Maybe Word16
 	} |
 	SecretKeyPacket {
 		version::Word8,
@@ -308,15 +312,51 @@ signature_packet_start x =
 
 -- The trailer is just the top of the body plus some crap
 calculate_signature_trailer :: Packet -> B.ByteString
-calculate_signature_trailer p =
+calculate_signature_trailer (SignaturePacket { version = v,
+                                               signature_type = signature_type,
+                                               unhashed_subpackets = unhashed_subpackets
+                                             }) | v `elem` [2,3] =
+	B.concat [
+		encode signature_type,
+		encode creation_time
+	]
+	where
+	Just (SignatureCreationTimePacket creation_time) = find isCreation unhashed_subpackets
+	isCreation (SignatureCreationTimePacket {}) = True
+	isCreation _ = False
+calculate_signature_trailer p@(SignaturePacket {version = 4}) =
 	B.concat [
 		signature_packet_start p,
 		encode (0x04 :: Word8),
 		encode (0xff :: Word8),
 		encode (fromIntegral (B.length $ signature_packet_start p) :: Word32)
 	]
+calculate_signature_trailer x =
+	error ("Trying to calculate signature trailer for: " ++ show x)
 
 put_packet :: (Num a) => Packet -> (B.ByteString, a)
+put_packet (SignaturePacket { version = v,
+                              unhashed_subpackets = unhashed_subpackets,
+                              key_algorithm = key_algorithm,
+                              hash_algorithm = hash_algorithm,
+                              hash_head = hash_head,
+                              signature = signature,
+                              trailer = trailer }) | v `elem` [2,3] =
+	-- TODO: Assert that there are no subpackets we cannot encode?
+	(B.concat $ [
+		B.singleton v,
+		B.singleton 0x05,
+		trailer, -- signature_type and creation_time
+		encode keyid,
+		encode key_algorithm,
+		encode hash_algorithm,
+		encode hash_head
+	] ++ map encode signature, 2)
+	where
+	keyid = fst $ head $ readHex keyidS :: Word64
+	Just (IssuerPacket keyidS) = find isIssuer unhashed_subpackets
+	isIssuer (IssuerPacket {}) = True
+	isIssuer _ = False
 put_packet (SignaturePacket { version = 4,
                               unhashed_subpackets = unhashed_subpackets,
                               hash_head = hash_head,
@@ -372,15 +412,25 @@ put_packet (SecretKeyPacket { version = version, timestamp = timestamp,
 	where
 	(Just s2k_t) = s2k_type
 	p = fst (put_packet $
-		PublicKeyPacket version timestamp algorithm key False
+		PublicKeyPacket version timestamp algorithm key False Nothing
 		:: (B.ByteString, Integer)) -- Supress warning
 	s = map (encode . (key !)) (secret_key_fields algorithm)
-put_packet (PublicKeyPacket { version = 4, timestamp = timestamp,
+put_packet p@(PublicKeyPacket { version = v, timestamp = timestamp,
                               key_algorithm = algorithm, key = key,
-                              is_subkey = is_subkey }) =
-	(B.concat $ [B.singleton 4, encode timestamp, encode algorithm] ++
-		map (encode . (key !)) (public_key_fields algorithm),
-	if is_subkey then 14 else 6)
+                              is_subkey = is_subkey })
+	| v == 3 =
+		final (B.concat $ [
+			B.singleton 3, encode timestamp,
+			encode (fromJust $ v3_days_of_validity p),
+			encode algorithm
+		] ++ material)
+	| v == 4 =
+		final (B.concat $ [
+			B.singleton 4, encode timestamp, encode algorithm
+		] ++ material)
+	where
+	final x = (x, if is_subkey then 14 else 6)
+	material = map (encode . (key !)) (public_key_fields algorithm)
 put_packet (CompressedDataPacket { compression_algorithm = algorithm,
                                    message = message }) =
 	(B.append (encode algorithm) $ compress algorithm $ encode message, 8)
@@ -396,14 +446,36 @@ put_packet (LiteralDataPacket { format = format, filename = filename,
 put_packet (UserIDPacket txt) = (B.fromString txt, 13)
 put_packet (ModificationDetectionCodePacket bstr) = (bstr, 19)
 put_packet (UnsupportedPacket tag bytes) = (bytes, fromIntegral tag)
-put_packet _ = error "Unsupported Packet version or type in put_packet."
+put_packet x = error ("Unsupported Packet version or type in put_packet: " ++ show x)
 
 parse_packet :: Word8 -> Get Packet
 -- SignaturePacket, http://tools.ietf.org/html/rfc4880#section-5.2
 parse_packet  2 = do
 	version <- get
 	case version of
-		3 -> error "V3 signatures are not supported yet" -- TODO: V3 sigs
+		_ | version `elem` [2,3] -> do
+			_ <- fmap (assertProp (==5)) (get :: Get Word8)
+			signature_type <- get
+			creation_time <- get :: Get Word32
+			keyid <- get :: Get Word64
+			key_algorithm <- get
+			hash_algorithm <- get
+			hash_head <- get
+			signature <- listUntilEnd
+			return SignaturePacket {
+				version = version,
+				signature_type = signature_type,
+				key_algorithm = key_algorithm,
+				hash_algorithm = hash_algorithm,
+				hashed_subpackets = [],
+				unhashed_subpackets = [
+					SignatureCreationTimePacket creation_time,
+					IssuerPacket $ pad $ map toUpper $ showHex keyid ""
+				],
+				hash_head = hash_head,
+				signature = signature,
+				trailer = B.concat [encode signature_type, encode creation_time]
+			}
 		4 -> do
 			signature_type <- get
 			key_algorithm <- get
@@ -428,6 +500,8 @@ parse_packet  2 = do
 				trailer = B.concat [encode version, encode signature_type, encode key_algorithm, encode hash_algorithm, encode (fromIntegral hashed_size :: Word16), hashed_data, B.pack [4, 0xff], encode ((6 + fromIntegral hashed_size) :: Word32)]
 			}
 		x -> fail $ "Unknown SignaturePacket version " ++ show x ++ "."
+	where
+	pad s = replicate (16 - length s) '0' ++ s
 -- OnePassSignaturePacket, http://tools.ietf.org/html/rfc4880#section-5.4
 parse_packet  4 = do
 	version <- get
@@ -486,18 +560,30 @@ parse_packet  5 = do
 parse_packet  6 = do
 	version <- get :: Get Word8
 	case version of
+		3 -> do
+			timestamp <- get
+			days <- get
+			algorithm <- get
+			key <- mapM (\f -> fmap ((,)f) get) (public_key_fields algorithm)
+			return PublicKeyPacket {
+				version = version,
+				timestamp = timestamp,
+				key_algorithm = algorithm,
+				key = key,
+				is_subkey = False,
+				v3_days_of_validity = Just days
+			}
 		4 -> do
 			timestamp <- get
 			algorithm <- get
-			key <- mapM (\f -> do
-				mpi <- get :: Get MPI
-				return (f, mpi)) (public_key_fields algorithm)
+			key <- mapM (\f -> fmap ((,)f) get) (public_key_fields algorithm)
 			return PublicKeyPacket {
 				version = 4,
 				timestamp = timestamp,
 				key_algorithm = algorithm,
 				key = key,
-				is_subkey = False
+				is_subkey = False,
+				v3_days_of_validity = Nothing
 			}
 		x -> fail $ "Unsupported PublicKeyPacket version " ++ show x ++ "."
 -- Secret-SubKey Packet, http://tools.ietf.org/html/rfc4880#section-5.5.1.4
@@ -542,28 +628,16 @@ parse_packet tag = fmap (UnsupportedPacket tag) getRemainingByteString
 
 -- | Helper method for fingerprints and such
 fingerprint_material :: Packet -> [B.ByteString]
-fingerprint_material (PublicKeyPacket {version = 4,
-                      timestamp = timestamp,
-                      key_algorithm = algorithm,
-                      key = key}) =
+fingerprint_material p | version p == 4 =
 	[
 		B.singleton 0x99,
 		encode (6 + fromIntegral (B.length material) :: Word16),
-		B.singleton 4, encode timestamp, encode algorithm,
+		B.singleton 4, encode (timestamp p), encode (key_algorithm p),
 		material
 	]
 	where
-	material =
-		B.concat $ map (encode . (key !)) (public_key_fields algorithm)
--- Proxy to make SecretKeyPacket work
-fingerprint_material (SecretKeyPacket {version = 4,
-                      timestamp = timestamp,
-                      key_algorithm = algorithm,
-                      key = key}) =
-	fingerprint_material PublicKeyPacket {version = 4,
-                      timestamp = timestamp,
-                      key_algorithm = algorithm,
-                      key = key, is_subkey = False}
+	material = B.concat $ map (encode . (key p !))
+		(public_key_fields $ key_algorithm p)
 fingerprint_material p | version p `elem` [2, 3] = [n, e]
 	where
 	n = B.drop 2 (encode (key p ! 'n'))
