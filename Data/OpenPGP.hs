@@ -628,28 +628,16 @@ parse_packet tag = fmap (UnsupportedPacket tag) getRemainingByteString
 
 -- | Helper method for fingerprints and such
 fingerprint_material :: Packet -> [B.ByteString]
-fingerprint_material (PublicKeyPacket {version = 4,
-                      timestamp = timestamp,
-                      key_algorithm = algorithm,
-                      key = key}) =
+fingerprint_material p | version p == 4 =
 	[
 		B.singleton 0x99,
 		encode (6 + fromIntegral (B.length material) :: Word16),
-		B.singleton 4, encode timestamp, encode algorithm,
+		B.singleton 4, encode (timestamp p), encode (key_algorithm p),
 		material
 	]
 	where
-	material =
-		B.concat $ map (encode . (key !)) (public_key_fields algorithm)
--- Proxy to make SecretKeyPacket work
-fingerprint_material (SecretKeyPacket {version = 4,
-                      timestamp = timestamp,
-                      key_algorithm = algorithm,
-                      key = key}) =
-	fingerprint_material PublicKeyPacket {version = 4,
-                      timestamp = timestamp,
-                      key_algorithm = algorithm,
-                      key = key, is_subkey = False}
+	material = B.concat $ map (encode . (key p !))
+		(public_key_fields $ key_algorithm p)
 fingerprint_material p | version p `elem` [2, 3] = [n, e]
 	where
 	n = B.drop 2 (encode (key p ! 'n'))
