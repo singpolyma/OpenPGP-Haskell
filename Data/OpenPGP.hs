@@ -65,6 +65,7 @@ import Data.Bits
 import Data.Word
 import Data.Char
 import Data.Maybe
+import Data.List
 import Data.OpenPGP.Internal
 import qualified Data.ByteString.Lazy as LZ
 
@@ -308,15 +309,51 @@ signature_packet_start x =
 
 -- The trailer is just the top of the body plus some crap
 calculate_signature_trailer :: Packet -> B.ByteString
-calculate_signature_trailer p =
+calculate_signature_trailer (SignaturePacket { version = v,
+                                               signature_type = signature_type,
+                                               unhashed_subpackets = unhashed_subpackets
+                                             }) | v `elem` [2,3] =
+	B.concat [
+		encode signature_type,
+		encode creation_time
+	]
+	where
+	Just (SignatureCreationTimePacket creation_time) = find isCreation unhashed_subpackets
+	isCreation (SignatureCreationTimePacket {}) = True
+	isCreation _ = False
+calculate_signature_trailer p@(SignaturePacket {version = 4}) =
 	B.concat [
 		signature_packet_start p,
 		encode (0x04 :: Word8),
 		encode (0xff :: Word8),
 		encode (fromIntegral (B.length $ signature_packet_start p) :: Word32)
 	]
+calculate_signature_trailer x =
+	error ("Trying to calculate signature trailer for: " ++ show x)
 
 put_packet :: (Num a) => Packet -> (B.ByteString, a)
+put_packet (SignaturePacket { version = v,
+                              unhashed_subpackets = unhashed_subpackets,
+                              key_algorithm = key_algorithm,
+                              hash_algorithm = hash_algorithm,
+                              hash_head = hash_head,
+                              signature = signature,
+                              trailer = trailer }) | v `elem` [2,3] =
+	-- TODO: Assert that there are no subpackets we cannot encode?
+	(B.concat $ [
+		B.singleton v,
+		B.singleton 0x05,
+		trailer, -- signature_type and creation_time
+		encode keyid,
+		encode key_algorithm,
+		encode hash_algorithm,
+		encode hash_head
+	] ++ map encode signature, 2)
+	where
+	keyid = fst $ head $ readHex keyidS :: Word64
+	Just (IssuerPacket keyidS) = find isIssuer unhashed_subpackets
+	isIssuer (IssuerPacket {}) = True
+	isIssuer _ = False
 put_packet (SignaturePacket { version = 4,
                               unhashed_subpackets = unhashed_subpackets,
                               hash_head = hash_head,
@@ -407,7 +444,7 @@ parse_packet  2 = do
 			_ <- fmap (assertProp (==5)) (get :: Get Word8)
 			signature_type <- get
 			creation_time <- get :: Get Word32
-			key_id <- get :: Get Word64
+			keyid <- get :: Get Word64
 			key_algorithm <- get
 			hash_algorithm <- get
 			hash_head <- get
