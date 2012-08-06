@@ -418,10 +418,13 @@ parse_packet  2 = do
 				key_algorithm = key_algorithm,
 				hash_algorithm = hash_algorithm,
 				hashed_subpackets = [],
-				unhashed_subpackets = [],
+				unhashed_subpackets = [
+					SignatureCreationTimePacket creation_time,
+					IssuerPacket $ pad $ map toUpper $ showHex keyid ""
+				],
 				hash_head = hash_head,
 				signature = signature,
-				trailer = B.concat [encode creation_time, encode key_id] -- TODO: put this somewhere better
+				trailer = B.concat [encode signature_type, encode creation_time]
 			}
 		4 -> do
 			signature_type <- get
@@ -447,6 +450,8 @@ parse_packet  2 = do
 				trailer = B.concat [encode version, encode signature_type, encode key_algorithm, encode hash_algorithm, encode (fromIntegral hashed_size :: Word16), hashed_data, B.pack [4, 0xff], encode ((6 + fromIntegral hashed_size) :: Word32)]
 			}
 		x -> fail $ "Unknown SignaturePacket version " ++ show x ++ "."
+	where
+	pad s = replicate (16 - length s) '0' ++ s
 -- OnePassSignaturePacket, http://tools.ietf.org/html/rfc4880#section-5.4
 parse_packet  4 = do
 	version <- get
