@@ -446,7 +446,7 @@ put_packet (LiteralDataPacket { format = format, filename = filename,
 put_packet (UserIDPacket txt) = (B.fromString txt, 13)
 put_packet (ModificationDetectionCodePacket bstr) = (bstr, 19)
 put_packet (UnsupportedPacket tag bytes) = (bytes, fromIntegral tag)
-put_packet _ = error "Unsupported Packet version or type in put_packet."
+put_packet x = error ("Unsupported Packet version or type in put_packet: " ++ show x)
 
 parse_packet :: Word8 -> Get Packet
 -- SignaturePacket, http://tools.ietf.org/html/rfc4880#section-5.2
