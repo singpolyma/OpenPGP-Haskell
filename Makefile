@@ -5,7 +5,7 @@ GHCFLAGS=-Wall -fno-warn-name-shadowing -XHaskell98
 endif
 
 HLINTFLAGS=-XHaskell98 -XCPP -i 'Use camelCase' -i 'Use String' -i 'Use head' -i 'Use string literal' -i 'Use list comprehension' --utf8
-VERSION=0.3
+VERSION=0.4
 
 .PHONY: all clean doc install debian test
 
