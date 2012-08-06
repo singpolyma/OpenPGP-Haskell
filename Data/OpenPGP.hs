@@ -24,6 +24,8 @@ module Data.OpenPGP (
 		hashed_subpackets,
 		hash_head,
 		key,
+		is_subkey,
+		v3_days_of_validity,
 		key_algorithm,
 		key_id,
 		message,
@@ -173,7 +175,8 @@ data Packet =
 		timestamp::Word32,
 		key_algorithm::KeyAlgorithm,
 		key::[(Char,MPI)],
-		is_subkey::Bool
+		is_subkey::Bool,
+		v3_days_of_validity::Maybe Word16
 	} |
 	SecretKeyPacket {
 		version::Word8,
@@ -409,15 +412,25 @@ put_packet (SecretKeyPacket { version = version, timestamp = timestamp,
 	where
 	(Just s2k_t) = s2k_type
 	p = fst (put_packet $
-		PublicKeyPacket version timestamp algorithm key False
+		PublicKeyPacket version timestamp algorithm key False Nothing
 		:: (B.ByteString, Integer)) -- Supress warning
 	s = map (encode . (key !)) (secret_key_fields algorithm)
-put_packet (PublicKeyPacket { version = 4, timestamp = timestamp,
+put_packet p@(PublicKeyPacket { version = v, timestamp = timestamp,
                               key_algorithm = algorithm, key = key,
-                              is_subkey = is_subkey }) =
-	(B.concat $ [B.singleton 4, encode timestamp, encode algorithm] ++
-		map (encode . (key !)) (public_key_fields algorithm),
-	if is_subkey then 14 else 6)
+                              is_subkey = is_subkey })
+	| v == 3 =
+		final (B.concat $ [
+			B.singleton 3, encode timestamp,
+			encode (fromJust $ v3_days_of_validity p),
+			encode algorithm
+		] ++ material)
+	| v == 4 =
+		final (B.concat $ [
+			B.singleton 4, encode timestamp, encode algorithm
+		] ++ material)
+	where
+	final x = (x, if is_subkey then 14 else 6)
+	material = map (encode . (key !)) (public_key_fields algorithm)
 put_packet (CompressedDataPacket { compression_algorithm = algorithm,
                                    message = message }) =
 	(B.append (encode algorithm) $ compress algorithm $ encode message, 8)
@@ -549,7 +562,7 @@ parse_packet  6 = do
 	case version of
 		3 -> do
 			timestamp <- get
-			_ <- get :: Get Word16 -- TODO: preserve days_of_validity somehow
+			days <- get
 			algorithm <- get
 			key <- mapM (\f -> fmap ((,)f) get) (public_key_fields algorithm)
 			return PublicKeyPacket {
@@ -557,20 +570,20 @@ parse_packet  6 = do
 				timestamp = timestamp,
 				key_algorithm = algorithm,
 				key = key,
-				is_subkey = False
+				is_subkey = False,
+				v3_days_of_validity = Just days
 			}
 		4 -> do
 			timestamp <- get
 			algorithm <- get
-			key <- mapM (\f -> do
-				mpi <- get :: Get MPI
-				return (f, mpi)) (public_key_fields algorithm)
+			key <- mapM (\f -> fmap ((,)f) get) (public_key_fields algorithm)
 			return PublicKeyPacket {
 				version = 4,
 				timestamp = timestamp,
 				key_algorithm = algorithm,
 				key = key,
-				is_subkey = False
+				is_subkey = False,
+				v3_days_of_validity = Nothing
 			}
 		x -> fail $ "Unsupported PublicKeyPacket version " ++ show x ++ "."
 -- Secret-SubKey Packet, http://tools.ietf.org/html/rfc4880#section-5.5.1.4
