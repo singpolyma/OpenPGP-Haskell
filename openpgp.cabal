@@ -112,6 +112,7 @@ extra-source-files:
         tests/data/000076-007.secret_subkey,
         tests/data/000077-002.sig,
         tests/data/000078-012.ring_trust,
+        tests/data/002182-002.sig,
         tests/data/compressedsig-bzip2.gpg,
         tests/data/compressedsig.gpg,
         tests/data/compressedsig-zlib.gpg,
