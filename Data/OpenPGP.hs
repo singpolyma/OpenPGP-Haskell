@@ -62,6 +62,7 @@ module Data.OpenPGP (
 
 import Numeric
 import Control.Monad
+import Control.Arrow
 import Control.Exception (assert)
 import Data.Bits
 import Data.Word
@@ -790,19 +791,23 @@ signatures_and_data (Message lst) =
 newtype MPI = MPI Integer deriving (Show, Read, Eq, Ord)
 instance BINARY_CLASS MPI where
 	put (MPI i) = do
-		put (((fromIntegral . B.length $ bytes) - 1) * 8
-			+ floor (logBase (2::Double) $ fromIntegral (bytes `B.index` 0))
-			+ 1 :: Word16)
+		put (bitl :: Word16)
 		putSomeByteString bytes
 		where
-		bytes = if B.null bytes' then B.singleton 0 else bytes'
+		(bytes, bitl)
+			| B.null bytes' = (B.singleton 0, 1)
+			| otherwise     =
+				(bytes', (fromIntegral (B.length bytes') - 1) * 8 + sigBit)
+
+		sigBit = fst $ until ((==0) . snd)
+			(first (+1) . second (`shiftR` 1)) (0,B.index bytes 0)
 		bytes' = B.reverse $ B.unfoldr (\x ->
 				if x == 0 then Nothing else
 					Just (fromIntegral x, x `shiftR` 8)
 			) (assertProp (>=0) i)
 	get = do
 		length <- fmap fromIntegral (get :: Get Word16)
-		bytes <- getSomeByteString ((length + 7) `div` 8)
+		bytes <- getSomeByteString (assertProp (>0) $ (length + 7) `div` 8)
 		return (MPI (B.foldl (\a b ->
 			a `shiftL` 8 .|. fromIntegral b) 0 bytes))
 
