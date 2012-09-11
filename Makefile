@@ -1,7 +1,7 @@
 ifdef CEREAL
-GHCFLAGS=-Wall -DCEREAL -fno-warn-name-shadowing -XHaskell98
+GHCFLAGS=-Wall -O2 -DCEREAL -fno-warn-name-shadowing -XHaskell98
 else
-GHCFLAGS=-Wall -fno-warn-name-shadowing -XHaskell98
+GHCFLAGS=-Wall -O2 -fno-warn-name-shadowing -XHaskell98
 endif
 
 HLINTFLAGS=-XHaskell98 -XCPP -i 'Use camelCase' -i 'Use String' -i 'Use head' -i 'Use string literal' -i 'Use list comprehension' --utf8
