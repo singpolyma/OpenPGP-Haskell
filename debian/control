@@ -41,7 +41,9 @@ Description: Implementation of the OpenPGP message format
  and then defines instances of Data.Binary for each to facilitate
  encoding/decoding.
  .
- For performing cryptography, see <http://hackage.haskell.org/openpgp-Crypto>
+ For performing cryptography, see
+ <http://hackage.haskell.org/package/openpgp-crypto-api> or
+ <http://hackage.haskell.org/package/openpgp-Crypto>
  .
  It is intended that you use qualified imports with this library.
  .
@@ -69,7 +71,9 @@ Description: Implementation of the OpenPGP message format
  and then defines instances of Data.Binary for each to facilitate
  encoding/decoding.
  .
- For performing cryptography, see <http://hackage.haskell.org/openpgp-Crypto>
+ For performing cryptography, see
+ <http://hackage.haskell.org/package/openpgp-crypto-api> or
+ <http://hackage.haskell.org/package/openpgp-Crypto>
  .
  It is intended that you use qualified imports with this library.
  .
@@ -97,7 +101,9 @@ Description: Implementation of the OpenPGP message format
  and then defines instances of Data.Binary for each to facilitate
  encoding/decoding.
  .
- For performing cryptography, see <http://hackage.haskell.org/openpgp-Crypto>
+ For performing cryptography, see
+ <http://hackage.haskell.org/package/openpgp-crypto-api> or
+ <http://hackage.haskell.org/package/openpgp-Crypto>
  .
  It is intended that you use qualified imports with this library.
  .

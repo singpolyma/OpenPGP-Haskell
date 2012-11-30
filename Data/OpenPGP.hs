@@ -1093,11 +1093,13 @@ parse_signature_subpacket tag =
 signature_issuer :: Packet -> Maybe String
 signature_issuer (SignaturePacket {hashed_subpackets = hashed,
                                    unhashed_subpackets = unhashed}) =
-	if length issuers > 0 then Just issuer else Nothing
-	where IssuerPacket issuer = issuers !! 0
-	      issuers = filter isIssuer hashed ++ filter isIssuer unhashed
-	      isIssuer (IssuerPacket {}) = True
-	      isIssuer _ = False
+	case issuers of
+		IssuerPacket issuer : _ -> Just issuer
+		_                       -> Nothing
+	where
+	issuers = filter isIssuer hashed ++ filter isIssuer unhashed
+	isIssuer (IssuerPacket {}) = True
+	isIssuer _ = False
 signature_issuer _ = Nothing
 
 find_key :: (Packet -> String) -> Message -> String -> Maybe Packet
