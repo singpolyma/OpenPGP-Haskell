@@ -377,10 +377,12 @@ put_packet (OnePassSignaturePacket { version = version,
                                      key_algorithm = key_algorithm,
                                      key_id = key_id,
                                      nested = nested }) =
-	(B.concat [ encode version, encode signature_type,
-	             encode hash_algorithm, encode key_algorithm,
-	             encode (fst $ head $ readHex key_id :: Word64),
-	             encode nested ], 4)
+	(B.concat [
+		encode version, encode signature_type,
+		encode hash_algorithm, encode key_algorithm,
+		encode (fst $ head $ readHex key_id :: Word64),
+		encode nested
+	], 4)
 put_packet (SecretKeyPacket { version = version, timestamp = timestamp,
                               key_algorithm = algorithm, key = key,
                               s2k_useage = s2k_useage,
@@ -439,8 +441,10 @@ put_packet MarkerPacket = (B.fromString "PGP", 10)
 put_packet (LiteralDataPacket { format = format, filename = filename,
                                 timestamp = timestamp, content = content
                               }) =
-	(B.concat [encode format, encode filename_l, lz_filename,
-	            encode timestamp, content], 11)
+	(B.concat [
+		encode format, encode filename_l, lz_filename,
+		encode timestamp, content
+	], 11)
 	where
 	filename_l  = (fromIntegral $ B.length lz_filename) :: Word8
 	lz_filename = B.fromString filename
