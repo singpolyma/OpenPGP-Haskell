@@ -1,4 +1,4 @@
-{-# LANGUAGE CPP #-}
+{-# LANGUAGE CPP, DeriveDataTypeable #-}
 -- | Main implementation of the OpenPGP message format <http://tools.ietf.org/html/rfc4880>
 --
 -- The recommended way to import this module is:
@@ -65,6 +65,8 @@ import Data.Bits
 import Data.Word
 import Data.Char
 import Data.Maybe
+import Data.Data (Data)
+import Data.Typeable (Typeable)
 import Data.OpenPGP.Internal
 import qualified Data.ByteString.Lazy as LZ
 
@@ -216,7 +218,7 @@ data Packet =
         }|
 	ModificationDetectionCodePacket B.ByteString |
 	UnsupportedPacket Word8 B.ByteString
-	deriving (Show, Read, Eq)
+	deriving (Show, Read, Eq, Data, Typeable)
 
 instance BINARY_CLASS Packet where
 	put p = do
@@ -667,7 +669,7 @@ enum_from_word8 :: (Enum a) => Word8 -> a
 enum_from_word8 = toEnum . fromIntegral
 
 data HashAlgorithm = MD5 | SHA1 | RIPEMD160 | SHA256 | SHA384 | SHA512 | SHA224 | HashAlgorithm Word8
-	deriving (Show, Read, Eq)
+	deriving (Show, Read, Eq, Data, Typeable)
 
 instance Enum HashAlgorithm where
 	toEnum 01 = MD5
@@ -692,7 +694,7 @@ instance BINARY_CLASS HashAlgorithm where
 	get = fmap enum_from_word8 get
 
 data KeyAlgorithm = RSA | RSA_E | RSA_S | ELGAMAL | DSA | ECC | ECDSA | DH | KeyAlgorithm Word8
-	deriving (Show, Read, Eq)
+	deriving (Show, Read, Eq, Data, Typeable)
 
 instance Enum KeyAlgorithm where
 	toEnum 01 = RSA
@@ -719,7 +721,7 @@ instance BINARY_CLASS KeyAlgorithm where
 	get = fmap enum_from_word8 get
 
 data SymmetricAlgorithm = Unencrypted | IDEA | TripleDES | CAST5 | Blowfish | AES128 | AES192 | AES256 | Twofish | SymmetricAlgorithm Word8
-	deriving (Show, Read, Eq)
+	deriving (Show, Read, Eq, Data, Typeable)
 
 instance Enum SymmetricAlgorithm where
 	toEnum 00 = Unencrypted
@@ -748,7 +750,7 @@ instance BINARY_CLASS SymmetricAlgorithm where
 	get = fmap enum_from_word8 get
 
 data CompressionAlgorithm = Uncompressed | ZIP | ZLIB | BZip2 | CompressionAlgorithm Word8
-	deriving (Show, Read, Eq)
+	deriving (Show, Read, Eq, Data, Typeable)
 
 instance Enum CompressionAlgorithm where
 	toEnum 0 = Uncompressed
@@ -766,7 +768,7 @@ instance BINARY_CLASS CompressionAlgorithm where
 	put = put . enum_to_word8
 	get = fmap enum_from_word8 get
 
-data RevocationCode = NoReason | KeySuperseded | KeyCompromised | KeyRetired | UserIDInvalid | RevocationCode Word8 deriving (Show, Read, Eq)
+data RevocationCode = NoReason | KeySuperseded | KeyCompromised | KeyRetired | UserIDInvalid | RevocationCode Word8 deriving (Show, Read, Eq, Data, Typeable)
 
 instance Enum RevocationCode where
 	toEnum 00 = NoReason
@@ -787,7 +789,7 @@ instance BINARY_CLASS RevocationCode where
 	get = fmap enum_from_word8 get
 
 -- A message is encoded as a list that takes the entire file
-newtype Message = Message [Packet] deriving (Show, Read, Eq)
+newtype Message = Message [Packet] deriving (Show, Read, Eq, Data, Typeable)
 instance BINARY_CLASS Message where
 	put (Message xs) = mapM_ put xs
 	get = fmap Message listUntilEnd
@@ -802,7 +804,7 @@ signatures_and_data (Message lst) =
 	isDta (LiteralDataPacket {}) = True
 	isDta _ = False
 
-newtype MPI = MPI Integer deriving (Show, Read, Eq, Ord)
+newtype MPI = MPI Integer deriving (Show, Read, Eq, Ord, Data, Typeable)
 instance BINARY_CLASS MPI where
 	put (MPI i) = do
 		put (((fromIntegral . B.length $ bytes) - 1) * 8
@@ -875,7 +877,7 @@ data SignatureSubpacket =
 	} |
 	EmbeddedSignaturePacket Packet |
 	UnsupportedSignatureSubpacket Word8 B.ByteString
-	deriving (Show, Read, Eq)
+	deriving (Show, Read, Eq, Data, Typeable)
 
 instance BINARY_CLASS SignatureSubpacket where
 	put p = do
