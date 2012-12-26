@@ -1,19 +1,24 @@
-{-# LANGUAGE CPP #-}
+{-# LANGUAGE CPP, DeriveDataTypeable #-}
 -- | Main implementation of the OpenPGP message format <http://tools.ietf.org/html/rfc4880>
 --
 -- The recommended way to import this module is:
 --
 -- > import qualified Data.OpenPGP as OpenPGP
 module Data.OpenPGP (
-	Packet(
+	Packet( PublicKeyEncrypytedSessionKeyPacket,
+                SignaturePacket,
+                SymmetricKeyEncryptedSessionKeyPacket,
 		OnePassSignaturePacket,
 		PublicKeyPacket,
 		SecretKeyPacket,
 		CompressedDataPacket,
-		MarkerPacket,
+		SymetricallyEncryptedDataPacket,
+                MarkerPacket,
 		LiteralDataPacket,
+                TrustPacket,
 		UserIDPacket,
-		ModificationDetectionCodePacket,
+                UserAttributePacket,
+                ModificationDetectionCodePacket,
 		UnsupportedPacket,
 		compression_algorithm,
 		content,
@@ -68,6 +73,8 @@ import Data.Bits
 import Data.Word
 import Data.Char
 import Data.Maybe
+import Data.Data (Data)
+import Data.Typeable (Typeable)
 import Data.List
 import Data.OpenPGP.Internal
 import qualified Data.ByteString.Lazy as LZ
@@ -152,6 +159,12 @@ assertProp :: (a -> Bool) -> a -> a
 assertProp f x = assert (f x) x
 
 data Packet =
+  PublicKeyEncrypytedSessionKeyPacket {
+    version::Word8,
+    key_id::String,
+    key_algorithm::KeyAlgorithm,    
+    content::B.ByteString
+    } |
 	SignaturePacket {
 		version::Word8,
 		signature_type::Word8,
@@ -163,6 +176,12 @@ data Packet =
 		signature::[MPI],
 		trailer::B.ByteString
 	} |
+        SymmetricKeyEncryptedSessionKeyPacket {
+                version::Word8,
+                symmetric_algo::SymmetricAlgorithm,
+                s2k_useage :: Word8,
+                encrypted_sessionkey :: B.ByteString
+                } |
 	OnePassSignaturePacket {
 		version::Word8,
 		signature_type::Word8,
@@ -198,6 +217,9 @@ data Packet =
 		compression_algorithm::CompressionAlgorithm,
 		message::Message
 	} |
+        SymetricallyEncryptedDataPacket {
+          sym_encrypted_data::B.ByteString
+          } |
 	MarkerPacket |
 	LiteralDataPacket {
 		format::Char,
@@ -205,10 +227,14 @@ data Packet =
 		timestamp::Word32,
 		content::B.ByteString
 	} |
+        TrustPacket B.ByteString | 
 	UserIDPacket String |
+        UserAttributePacket {
+          user_attribute_subpackets :: [(Word8, B.ByteString)] 
+        }|
 	ModificationDetectionCodePacket B.ByteString |
 	UnsupportedPacket Word8 B.ByteString
-	deriving (Show, Read, Eq)
+	deriving (Show, Read, Eq, Data, Typeable)
 
 instance BINARY_CLASS Packet where
 	put p = do
@@ -336,6 +362,14 @@ calculate_signature_trailer x =
 	error ("Trying to calculate signature trailer for: " ++ show x)
 
 put_packet :: (Num a) => Packet -> (B.ByteString, a)
+put_packet (PublicKeyEncrypytedSessionKeyPacket { version = version,
+                                                  key_id = key_id,
+                                                  key_algorithm = key_algorithm,
+                                                  content = content }) = 
+  (B.concat $ [encode version, encode (fst . head . readHex $ key_id :: Word64), 
+               encode key_algorithm, content] , 1)
+
+
 put_packet (SignaturePacket { version = v,
                               unhashed_subpackets = unhashed_subpackets,
                               key_algorithm = key_algorithm,
@@ -371,6 +405,13 @@ put_packet (SignaturePacket { version = 4,
 	where
 	trailer_top = B.reverse $ B.drop 6 $ B.reverse trailer
 	unhashed = B.concat $ map encode unhashed_subpackets
+
+put_packet (SymmetricKeyEncryptedSessionKeyPacket { version = version,
+                                                    symmetric_algo = symmetric_algo,
+                                                    s2k_useage = s2k_useage,
+                                                    encrypted_sessionkey = encrypted_sessionkey}) = 
+  (B.concat [encode version, encode symmetric_algo, encode s2k_useage, encode encrypted_sessionkey], 3)
+
 put_packet (OnePassSignaturePacket { version = version,
                                      signature_type = signature_type,
                                      hash_algorithm = hash_algorithm,
@@ -437,6 +478,7 @@ put_packet p@(PublicKeyPacket { version = v, timestamp = timestamp,
 put_packet (CompressedDataPacket { compression_algorithm = algorithm,
                                    message = message }) =
 	(B.append (encode algorithm) $ compress algorithm $ encode message, 8)
+put_packet (SymetricallyEncryptedDataPacket encdata) = (encdata, 9)
 put_packet MarkerPacket = (B.fromString "PGP", 10)
 put_packet (LiteralDataPacket { format = format, filename = filename,
                                 timestamp = timestamp, content = content
@@ -448,12 +490,37 @@ put_packet (LiteralDataPacket { format = format, filename = filename,
 	where
 	filename_l  = (fromIntegral $ B.length lz_filename) :: Word8
 	lz_filename = B.fromString filename
+put_packet (TrustPacket bytes) = (bytes, 12)
 put_packet (UserIDPacket txt) = (B.fromString txt, 13)
 put_packet (ModificationDetectionCodePacket bstr) = (bstr, 19)
+put_packet (UserAttributePacket ps) =
+  let bs = B.concat $ map asubp ps
+      asubp (t, p) = runPut $ do
+        -- Use 5-octet-length + 1 for tag as the first packet body octet
+        put (255 :: Word8)
+        put (fromIntegral (B.length p) + 1 :: Word32)
+        putLazyByteString p
+  in (bs, 17)
+
 put_packet (UnsupportedPacket tag bytes) = (bytes, fromIntegral tag)
 put_packet x = error ("Unsupported Packet version or type in put_packet: " ++ show x)
 
 parse_packet :: Word8 -> Get Packet
+-- PublicKeyEncrypytedSessionKeyPacket, http://tools.ietf.org/html/rfc4880#section-5.2
+parse_packet  1 = do
+	version <- get
+        key_id <- fmap (\kid -> pad $ map toUpper $ showHex kid "") 
+                  (get :: Get Word64)
+        key_algorithm <- get
+        content <- get
+        return $ PublicKeyEncrypytedSessionKeyPacket {
+          version = version, 
+          key_id = key_id, 
+          key_algorithm = key_algorithm, 
+          content = content
+          }
+          where pad s = replicate (16 - length s) '0' ++ s        
+                
 -- SignaturePacket, http://tools.ietf.org/html/rfc4880#section-5.2
 parse_packet  2 = do
 	version <- get
@@ -507,6 +574,20 @@ parse_packet  2 = do
 		x -> fail $ "Unknown SignaturePacket version " ++ show x ++ "."
 	where
 	pad s = replicate (16 - length s) '0' ++ s
+
+-- SymmetricKeyEncryptedSessionKeyPacket, http://tools.ietf.org/html/rfc4880#section-5.3
+parse_packet  3 = do
+  version <- get
+  symmetric_algo <- get
+  s2k_useage <- get
+  encrypted_sessionkey <- getRemainingByteString
+  return SymmetricKeyEncryptedSessionKeyPacket { 
+    version = version,
+    symmetric_algo = symmetric_algo,
+    s2k_useage = s2k_useage,
+    encrypted_sessionkey = encrypted_sessionkey
+    }
+
 -- OnePassSignaturePacket, http://tools.ietf.org/html/rfc4880#section-5.4
 parse_packet  4 = do
 	version <- get
@@ -603,6 +684,8 @@ parse_packet  8 = do
 		compression_algorithm = algorithm,
 		message = unsafeRunGet get (decompress algorithm message)
 	}
+-- SymmetricallyEncryptedDataPacket, http://tools.ietf.org/html/rfc4880#section-5.7
+parse_packet  9 = fmap SymetricallyEncryptedDataPacket getRemainingByteString
 -- MarkerPacket, http://tools.ietf.org/html/rfc4880#section-5.8
 parse_packet 10 = return MarkerPacket
 -- LiteralDataPacket, http://tools.ietf.org/html/rfc4880#section-5.9
@@ -618,9 +701,22 @@ parse_packet 11 = do
 		timestamp = timestamp,
 		content = content
 	}
+-- TrustPacket, http://tools.ietf.org/html/rfc4880#section-5.10
+parse_packet 12 = fmap TrustPacket getRemainingByteString
 -- UserIDPacket, http://tools.ietf.org/html/rfc4880#section-5.11
-parse_packet 13 =
-	fmap (UserIDPacket . B.toString) getRemainingByteString
+parse_packet 13 = fmap (UserIDPacket . B.toString) getRemainingByteString
+-- UserAttribute Packet, http://tools.ietf.org/html/rfc4880#section-5.12
+parse_packet 17 = 
+  let parse_sub_packet :: [(Word8, B.ByteString)] -> Get [(Word8, B.ByteString)]
+      parse_sub_packet ps = do
+        e <- isEmpty
+        if e then return ps else do
+          len <- fmap fromIntegral parse_new_length
+          t <- getWord8
+          bytes <- getSomeByteString len
+          return ((t, bytes):ps)
+  in fmap UserAttributePacket $ parse_sub_packet []
+  
 -- Public-Subkey Packet, http://tools.ietf.org/html/rfc4880#section-5.5.1.2
 parse_packet 14 = do
 	p <- parse_packet 6
@@ -657,7 +753,7 @@ enum_from_word8 :: (Enum a) => Word8 -> a
 enum_from_word8 = toEnum . fromIntegral
 
 data HashAlgorithm = MD5 | SHA1 | RIPEMD160 | SHA256 | SHA384 | SHA512 | SHA224 | HashAlgorithm Word8
-	deriving (Show, Read, Eq)
+	deriving (Show, Read, Eq, Data, Typeable)
 
 instance Enum HashAlgorithm where
 	toEnum 01 = MD5
@@ -682,7 +778,7 @@ instance BINARY_CLASS HashAlgorithm where
 	get = fmap enum_from_word8 get
 
 data KeyAlgorithm = RSA | RSA_E | RSA_S | ELGAMAL | DSA | ECC | ECDSA | DH | KeyAlgorithm Word8
-	deriving (Show, Read, Eq)
+	deriving (Show, Read, Eq, Data, Typeable)
 
 instance Enum KeyAlgorithm where
 	toEnum 01 = RSA
@@ -709,7 +805,7 @@ instance BINARY_CLASS KeyAlgorithm where
 	get = fmap enum_from_word8 get
 
 data SymmetricAlgorithm = Unencrypted | IDEA | TripleDES | CAST5 | Blowfish | AES128 | AES192 | AES256 | Twofish | SymmetricAlgorithm Word8
-	deriving (Show, Read, Eq)
+	deriving (Show, Read, Eq, Data, Typeable)
 
 instance Enum SymmetricAlgorithm where
 	toEnum 00 = Unencrypted
@@ -738,7 +834,7 @@ instance BINARY_CLASS SymmetricAlgorithm where
 	get = fmap enum_from_word8 get
 
 data CompressionAlgorithm = Uncompressed | ZIP | ZLIB | BZip2 | CompressionAlgorithm Word8
-	deriving (Show, Read, Eq)
+	deriving (Show, Read, Eq, Data, Typeable)
 
 instance Enum CompressionAlgorithm where
 	toEnum 0 = Uncompressed
@@ -756,7 +852,7 @@ instance BINARY_CLASS CompressionAlgorithm where
 	put = put . enum_to_word8
 	get = fmap enum_from_word8 get
 
-data RevocationCode = NoReason | KeySuperseded | KeyCompromised | KeyRetired | UserIDInvalid | RevocationCode Word8 deriving (Show, Read, Eq)
+data RevocationCode = NoReason | KeySuperseded | KeyCompromised | KeyRetired | UserIDInvalid | RevocationCode Word8 deriving (Show, Read, Eq, Data, Typeable)
 
 instance Enum RevocationCode where
 	toEnum 00 = NoReason
@@ -777,7 +873,7 @@ instance BINARY_CLASS RevocationCode where
 	get = fmap enum_from_word8 get
 
 -- A message is encoded as a list that takes the entire file
-newtype Message = Message [Packet] deriving (Show, Read, Eq)
+newtype Message = Message [Packet] deriving (Show, Read, Eq, Data, Typeable)
 instance BINARY_CLASS Message where
 	put (Message xs) = mapM_ put xs
 	get = fmap Message listUntilEnd
@@ -792,7 +888,7 @@ signatures_and_data (Message lst) =
 	isDta (LiteralDataPacket {}) = True
 	isDta _ = False
 
-newtype MPI = MPI Integer deriving (Show, Read, Eq, Ord)
+newtype MPI = MPI Integer deriving (Show, Read, Eq, Ord, Data, Typeable)
 instance BINARY_CLASS MPI where
 	put (MPI i) = do
 		put (bitl :: Word16)
@@ -869,7 +965,7 @@ data SignatureSubpacket =
 	} |
 	EmbeddedSignaturePacket Packet |
 	UnsupportedSignatureSubpacket Word8 B.ByteString
-	deriving (Show, Read, Eq)
+	deriving (Show, Read, Eq, Data, Typeable)
 
 instance BINARY_CLASS SignatureSubpacket where
 	put p = do
@@ -881,15 +977,7 @@ instance BINARY_CLASS SignatureSubpacket where
 		where
 		(body, tag) = put_signature_subpacket p
 	get = do
-		len <- fmap fromIntegral (get :: Get Word8)
-		len <- case len of
-			_ | len > 190 && len < 255 -> do -- Two octet length
-				second <- fmap fromIntegral (get :: Get Word8)
-				return $ ((len - 192) `shiftR` 8) + second + 192
-			255 -> -- Five octet length
-				fmap fromIntegral (get :: Get Word32)
-			_ -> -- One octet length, no furthur processing
-				return len
+		len <- fmap fromIntegral parse_new_length
 		tag <- fmap stripCrit get :: Get Word8
 		-- This forces the whole packet to be consumed
 		packet <- getSomeByteString (len-1)
