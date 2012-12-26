@@ -5,15 +5,19 @@
 --
 -- > import qualified Data.OpenPGP as OpenPGP
 module Data.OpenPGP (
-	Packet(
+	Packet( SignaturePacket,
+                SymmetricKeyEncryptedSessionKeyPacket,
 		OnePassSignaturePacket,
 		PublicKeyPacket,
 		SecretKeyPacket,
 		CompressedDataPacket,
-		MarkerPacket,
+		SymetricallyEncryptedDataPacket,
+                MarkerPacket,
 		LiteralDataPacket,
+                TrustPacket,
 		UserIDPacket,
-		ModificationDetectionCodePacket,
+                UserAttributePacket,
+                ModificationDetectionCodePacket,
 		UnsupportedPacket,
 		compression_algorithm,
 		content,
