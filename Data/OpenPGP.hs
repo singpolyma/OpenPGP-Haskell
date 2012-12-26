@@ -5,7 +5,8 @@
 --
 -- > import qualified Data.OpenPGP as OpenPGP
 module Data.OpenPGP (
-	Packet( SignaturePacket,
+	Packet( PublicKeyEncrypytedSessionKeyPacket,
+                SignaturePacket,
                 SymmetricKeyEncryptedSessionKeyPacket,
 		OnePassSignaturePacket,
 		PublicKeyPacket,
@@ -158,6 +159,12 @@ assertProp :: (a -> Bool) -> a -> a
 assertProp f x = assert (f x) x
 
 data Packet =
+  PublicKeyEncrypytedSessionKeyPacket {
+    version::Word8,
+    key_id::String,
+    key_algorithm::KeyAlgorithm,    
+    content::B.ByteString
+    } |
 	SignaturePacket {
 		version::Word8,
 		signature_type::Word8,
@@ -355,6 +362,14 @@ calculate_signature_trailer x =
 	error ("Trying to calculate signature trailer for: " ++ show x)
 
 put_packet :: (Num a) => Packet -> (B.ByteString, a)
+put_packet (PublicKeyEncrypytedSessionKeyPacket { version = version,
+                                                  key_id = key_id,
+                                                  key_algorithm = key_algorithm,
+                                                  content = content }) = 
+  (B.concat $ [encode version, encode (fst . head . readHex $ key_id :: Word64), 
+               encode key_algorithm, content] , 1)
+
+
 put_packet (SignaturePacket { version = v,
                               unhashed_subpackets = unhashed_subpackets,
                               key_algorithm = key_algorithm,
@@ -491,6 +506,21 @@ put_packet (UnsupportedPacket tag bytes) = (bytes, fromIntegral tag)
 put_packet x = error ("Unsupported Packet version or type in put_packet: " ++ show x)
 
 parse_packet :: Word8 -> Get Packet
+-- PublicKeyEncrypytedSessionKeyPacket, http://tools.ietf.org/html/rfc4880#section-5.2
+parse_packet  1 = do
+	version <- get
+        key_id <- fmap (\kid -> pad $ map toUpper $ showHex kid "") 
+                  (get :: Get Word64)
+        key_algorithm <- get
+        content <- get
+        return $ PublicKeyEncrypytedSessionKeyPacket {
+          version = version, 
+          key_id = key_id, 
+          key_algorithm = key_algorithm, 
+          content = content
+          }
+          where pad s = replicate (16 - length s) '0' ++ s        
+                
 -- SignaturePacket, http://tools.ietf.org/html/rfc4880#section-5.2
 parse_packet  2 = do
 	version <- get
