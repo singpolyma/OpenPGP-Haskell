@@ -1,11 +1,11 @@
 ifdef CEREAL
-GHCFLAGS=-Wall -DCEREAL -fno-warn-name-shadowing -XHaskell98
+GHCFLAGS=-Wall -O2 -DCEREAL -fno-warn-name-shadowing -XHaskell98
 else
-GHCFLAGS=-Wall -fno-warn-name-shadowing -XHaskell98
+GHCFLAGS=-Wall -O2 -fno-warn-name-shadowing -XHaskell98
 endif
 
-HLINTFLAGS=-XHaskell98 -XCPP -i 'Use camelCase' -i 'Use String' -i 'Use head' -i 'Use string literal' -i 'Use list comprehension' --utf8
-VERSION=0.3
+HLINTFLAGS=-u -XHaskell98 -XCPP -i 'Use camelCase' -i 'Use String' -i 'Use string literal' -i 'Use list comprehension'
+VERSION=0.4
 
 .PHONY: all clean doc install debian test
 

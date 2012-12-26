@@ -24,8 +24,8 @@ description:
         encoding/decoding.
         .
         For performing cryptography, see
-        <http://hackage.haskell.org/openpgp-crypto-api> or
-        <http://hackage.haskell.org/openpgp-Crypto>
+        <http://hackage.haskell.org/package/openpgp-crypto-api> or
+        <http://hackage.haskell.org/package/openpgp-Crypto>
         .
         It is intended that you use qualified imports with this library.
         .
@@ -112,6 +112,7 @@ extra-source-files:
         tests/data/000076-007.secret_subkey,
         tests/data/000077-002.sig,
         tests/data/000078-012.ring_trust,
+        tests/data/002182-002.sig,
         tests/data/compressedsig-bzip2.gpg,
         tests/data/compressedsig.gpg,
         tests/data/compressedsig-zlib.gpg,
