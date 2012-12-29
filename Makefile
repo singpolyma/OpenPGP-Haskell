@@ -48,15 +48,15 @@ endif
 
 ifdef CEREAL
 dist/setup-config: openpgp.cabal
-	-printf '1c\nname:            openpgp-cereal\n.\n,s/binary,$$/cereal,/g\nw\nq\n' | ed openpgp.cabal
-	cabal configure
+	-printf '1c\nname:            openpgp-cereal\n.\n,s/binary >= 0.6.4.0,$$/cereal,/g\nw\nq\n' | ed openpgp.cabal
+	cabal configure --enable-tests
 else
 dist/setup-config: openpgp.cabal
 	cabal configure --enable-tests
 endif
 
 clean:
-	-printf '1c\nname:            openpgp\n.\n,s/cereal,$$/binary,/g\nw\nq\n' | ed openpgp.cabal
+	-printf '1c\nname:            openpgp\n.\n,s/cereal,$$/binary >= 0.6.4.0,/g\nw\nq\n' | ed openpgp.cabal
 	find -name '*.o' -o -name '*.hi' | xargs $(RM)
 	$(RM) sign verify keygen tests/suite
 	$(RM) -r dist dist-ghc

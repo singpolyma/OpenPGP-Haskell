@@ -134,7 +134,7 @@ library
                 base == 4.*,
                 bytestring,
                 utf8-string,
-                binary,
+                binary >= 0.6.4.0,
                 zlib,
                 bzlib
 
@@ -149,7 +149,7 @@ test-suite tests
                 base == 4.*,
                 bytestring,
                 utf8-string,
-                binary,
+                binary >= 0.6.4.0,
                 zlib,
                 bzlib,
                 HUnit,

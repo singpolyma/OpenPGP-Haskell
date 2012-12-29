@@ -67,7 +67,6 @@ import Numeric
 import Control.Monad
 import Control.Arrow
 import Control.Applicative
-import Control.Exception (assert)
 import Data.Bits
 import Data.Word
 import Data.Char
@@ -104,8 +103,10 @@ getSomeByteString = getByteString . fromIntegral
 putSomeByteString :: B.ByteString -> Put
 putSomeByteString = putByteString
 
-unsafeRunGet :: Get a -> B.ByteString -> a
-unsafeRunGet g bs = let Right v = runGet g bs in v
+localGet :: Get a -> B.ByteString -> Get a
+localGet g bs = case runGet g bs of
+	Left s -> fail s
+	Right v -> return v
 
 compress :: CompressionAlgorithm -> B.ByteString -> B.ByteString
 compress algo = toStrictBS . lazyCompress algo . toLazyBS
@@ -128,8 +129,12 @@ getSomeByteString = getLazyByteString . fromIntegral
 putSomeByteString :: B.ByteString -> Put
 putSomeByteString = putLazyByteString
 
-unsafeRunGet :: Get a -> B.ByteString -> a
-unsafeRunGet = runGet
+localGet :: Get a -> B.ByteString -> Get a
+localGet g bs = case runGetOrFail g bs of
+	Left (_,_,s) -> fail s
+	Right (leftover,_,v)
+		| B.null leftover -> return v
+		| otherwise -> fail $ "Leftover in localGet: " ++ show leftover
 
 compress :: CompressionAlgorithm -> B.ByteString -> B.ByteString
 compress = lazyCompress
@@ -152,8 +157,10 @@ lazyDecompress ZLIB         = Zlib.decompress
 lazyDecompress BZip2        = BZip2.decompress
 lazyDecompress x            = error ("No implementation for " ++ show x)
 
-assertProp :: (a -> Bool) -> a -> a
-assertProp f x = assert (f x) x
+assertProp :: (Monad m, Show a) => (a -> Bool) -> a -> m a
+assertProp f x
+	| f x = return $! x
+	| otherwise = fail $ "Assertion failed for: " ++ show x
 
 pad :: Int -> String -> String
 pad l s = replicate (l - length s) '0' ++ s
@@ -236,7 +243,7 @@ instance BINARY_CLASS Packet where
 		-- First two bits are 1 for new packet format
 		put ((tag .|. 0xC0) :: Word8)
 		case tag of
-			19 -> put (assertProp (<192) blen :: Word8)
+			19 -> put =<< assertProp (<192) (blen :: Word8)
 			_  -> do
 				-- Use 5-octet lengths
 				put (255 :: Word8)
@@ -248,19 +255,19 @@ instance BINARY_CLASS Packet where
 		(body, tag) = put_packet p
 	get = do
 		(t, packet) <- get_packet_bytes
-		return $ unsafeRunGet (parse_packet t) (B.concat packet)
+		localGet (parse_packet t) (B.concat packet)
 
 get_packet_bytes :: Get (Word8, [B.ByteString])
 get_packet_bytes = do
 	tag <- get
 	let (t, l) =
 		if (tag .&. 64) /= 0 then
-			(tag .&. 63, parse_new_length)
+			(tag .&. 63, fmap (first Just) parse_new_length)
 		else
 			((tag `shiftR` 2) .&. 15, (,) <$> parse_old_length tag <*> pure False)
 	(len, partial) <- l
 	-- This forces the whole packet to be consumed
-	packet <- getSomeByteString (fromIntegral len)
+	packet <- maybe getRemainingByteString (getSomeByteString . fromIntegral) len
 	if not partial then return (t, [packet]) else
 		(,) t <$> ((packet:) . snd) <$> get_packet_bytes
 
@@ -283,17 +290,17 @@ parse_new_length = do
 		_ -> fail "Unsupported new packet length."
 
 -- http://tools.ietf.org/html/rfc4880#section-4.2.1
-parse_old_length :: Word8 -> Get Word32
+parse_old_length :: Word8 -> Get (Maybe Word32)
 parse_old_length tag =
 	case tag .&. 3 of
 		-- One octet length
-		0 -> fmap fromIntegral (get :: Get Word8)
+		0 -> fmap (Just . fromIntegral) (get :: Get Word8)
 		-- Two octet length
-		1 -> fmap fromIntegral (get :: Get Word16)
+		1 -> fmap (Just . fromIntegral) (get :: Get Word16)
 		-- Four octet length
-		2 -> get
+		2 -> fmap Just get
 		-- Indeterminate length
-		3 -> fmap fromIntegral remaining
+		3 -> return Nothing
 		-- Error
 		_ -> fail "Unsupported old packet length."
 
@@ -495,7 +502,7 @@ put_packet x = error ("Unsupported Packet version or type in put_packet: " ++ sh
 parse_packet :: Word8 -> Get Packet
 -- AsymmetricSessionKeyPacket, http://tools.ietf.org/html/rfc4880#section-5.1
 parse_packet  1 = AsymmetricSessionKeyPacket
-	<$> fmap (assertProp (==3)) get
+	<$> (assertProp (==3) =<< get)
 	<*> fmap (pad 16 . map toUpper . flip showHex "") (get :: Get Word64)
 	<*> get
 	<*> getRemainingByteString
@@ -504,7 +511,7 @@ parse_packet  2 = do
 	version <- get
 	case version of
 		_ | version `elem` [2,3] -> do
-			_ <- fmap (assertProp (==5)) (get :: Get Word8)
+			_ <- assertProp (==5) =<< (get :: Get Word8)
 			signature_type <- get
 			creation_time <- get :: Get Word32
 			keyid <- get :: Get Word64
@@ -532,10 +539,10 @@ parse_packet  2 = do
 			hash_algorithm <- get
 			hashed_size <- fmap fromIntegral (get :: Get Word16)
 			hashed_data <- getSomeByteString hashed_size
-			let hashed = unsafeRunGet listUntilEnd hashed_data
+			hashed <- localGet listUntilEnd hashed_data
 			unhashed_size <- fmap fromIntegral (get :: Get Word16)
 			unhashed_data <- getSomeByteString unhashed_size
-			let unhashed = unsafeRunGet listUntilEnd unhashed_data
+			unhashed <- localGet listUntilEnd unhashed_data
 			hash_head <- get
 			signature <- listUntilEnd
 			return SignaturePacket {
@@ -639,10 +646,10 @@ parse_packet  7 = do
 -- CompressedDataPacket, http://tools.ietf.org/html/rfc4880#section-5.6
 parse_packet  8 = do
 	algorithm <- get
-	message <- getRemainingByteString
+	message <- localGet get =<< (decompress algorithm <$> getRemainingByteString)
 	return CompressedDataPacket {
 		compression_algorithm = algorithm,
-		message = unsafeRunGet get (decompress algorithm message)
+		message = message
 	}
 -- EncryptedDataPacket, http://tools.ietf.org/html/rfc4880#section-5.7
 parse_packet  9 = EncryptedDataPacket 0 <$> getRemainingByteString
@@ -841,9 +848,11 @@ signatures_and_data (Message lst) =
 
 newtype MPI = MPI Integer deriving (Show, Read, Eq, Ord)
 instance BINARY_CLASS MPI where
-	put (MPI i) = do
-		put (bitl :: Word16)
-		putSomeByteString bytes
+	put (MPI i)
+		| i >= 0 = do
+			put (bitl :: Word16)
+			putSomeByteString bytes
+		| otherwise = fail $ "MPI is less than 0: " ++ show i
 		where
 		(bytes, bitl)
 			| B.null bytes' = (B.singleton 0, 1)
@@ -855,10 +864,10 @@ instance BINARY_CLASS MPI where
 		bytes' = B.reverse $ B.unfoldr (\x ->
 				if x == 0 then Nothing else
 					Just (fromIntegral x, x `shiftR` 8)
-			) (assertProp (>=0) i)
+			) i
 	get = do
 		length <- fmap fromIntegral (get :: Get Word16)
-		bytes <- getSomeByteString (assertProp (>0) $ (length + 7) `div` 8)
+		bytes <- getSomeByteString =<< assertProp (>0) ((length + 7) `div` 8)
 		return (MPI (B.foldl (\a b ->
 			a `shiftL` 8 .|. fromIntegral b) 0 bytes))
 
@@ -940,7 +949,7 @@ instance BINARY_CLASS SignatureSubpacket where
 		tag <- fmap stripCrit get :: Get Word8
 		-- This forces the whole packet to be consumed
 		packet <- getSomeByteString (len-1)
-		return $ unsafeRunGet (parse_signature_subpacket tag) packet
+		localGet (parse_signature_subpacket tag) packet
 		where
 		-- TODO: Decide how to actually encode the "is critical" data
 		-- instead of just ignoring it
@@ -1016,8 +1025,9 @@ put_signature_subpacket (FeaturesPacket supports_mdc) =
 	(B.singleton $ if supports_mdc then 0x01 else 0x00, 30)
 put_signature_subpacket (SignatureTargetPacket kalgo halgo hash) =
 	(B.concat [encode kalgo, encode halgo, hash], 31)
-put_signature_subpacket (EmbeddedSignaturePacket packet) =
-	(fst $ put_packet (assertProp isSignaturePacket packet), 32)
+put_signature_subpacket (EmbeddedSignaturePacket packet)
+	| isSignaturePacket packet = (fst $ put_packet packet, 32)
+	| otherwise = error $ "Tried to put non-SignaturePacket in EmbeddedSignaturePacket: " ++ show packet
 put_signature_subpacket (UnsupportedSignatureSubpacket tag bytes) =
 	(bytes, tag)
 
