@@ -52,7 +52,7 @@ dist/setup-config: openpgp.cabal
 	cabal configure
 else
 dist/setup-config: openpgp.cabal
-	cabal configure
+	cabal configure --enable-tests
 endif
 
 clean:
