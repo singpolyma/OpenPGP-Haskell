@@ -175,6 +175,7 @@ data Packet =
 		key_algorithm::KeyAlgorithm,
 		encrypted_data::B.ByteString
 	} |
+	-- ^ <http://tools.ietf.org/html/rfc4880#section-5.1>
 	SignaturePacket {
 		version::Word8,
 		signature_type::Word8,
@@ -186,6 +187,7 @@ data Packet =
 		signature::[MPI],
 		trailer::B.ByteString
 	} |
+	-- ^ <http://tools.ietf.org/html/rfc4880#section-5.2>
 	OnePassSignaturePacket {
 		version::Word8,
 		signature_type::Word8,
@@ -194,6 +196,7 @@ data Packet =
 		key_id::String,
 		nested::Word8
 	} |
+	-- ^ <http://tools.ietf.org/html/rfc4880#section-5.4>
 	PublicKeyPacket {
 		version::Word8,
 		timestamp::Word32,
@@ -202,39 +205,45 @@ data Packet =
 		is_subkey::Bool,
 		v3_days_of_validity::Maybe Word16
 	} |
+	-- ^ <http://tools.ietf.org/html/rfc4880#section-5.5.1.1> (also subkey)
 	SecretKeyPacket {
 		version::Word8,
 		timestamp::Word32,
 		key_algorithm::KeyAlgorithm,
 		key::[(Char,MPI)],
-		s2k_useage::Word8, -- determines if the Maybes are Just or Nothing
+		s2k_useage::Word8, -- ^ determines if the 'Maybe's are 'Just' or 'Nothing'
 		symmetric_type::Maybe Word8,
 		s2k_type::Maybe Word8,
 		s2k_hash_algorithm::Maybe HashAlgorithm,
 		s2k_salt::Maybe Word64,
 		s2k_count::Maybe Word32,
 		encrypted_data::B.ByteString,
-		private_hash::Maybe B.ByteString, -- the hash may be in the encrypted data
+		private_hash::Maybe B.ByteString, -- ^ the hash may be in the encrypted data
 		is_subkey::Bool
 	} |
+	-- ^ <http://tools.ietf.org/html/rfc4880#section-5.5.1.3> (also subkey)
 	CompressedDataPacket {
 		compression_algorithm::CompressionAlgorithm,
 		message::Message
 	} |
-	MarkerPacket |
+	-- ^ <http://tools.ietf.org/html/rfc4880#section-5.6>
+	MarkerPacket | -- ^ <http://tools.ietf.org/html/rfc4880#section-5.8>
 	LiteralDataPacket {
 		format::Char,
 		filename::String,
 		timestamp::Word32,
 		content::B.ByteString
 	} |
-	TrustPacket B.ByteString |
-	UserIDPacket String |
+	-- ^ <http://tools.ietf.org/html/rfc4880#section-5.9>
+	TrustPacket B.ByteString | -- ^ <http://tools.ietf.org/html/rfc4880#section-5.10>
+	UserIDPacket String | -- ^ <http://tools.ietf.org/html/rfc4880#section-5.11>
 	EncryptedDataPacket {
-		version::Word8, -- 0 for old-skool no-MDC (tag 9)
+		version::Word8,
 		encrypted_data::B.ByteString
 	} |
-	ModificationDetectionCodePacket B.ByteString |
+	-- ^ <http://tools.ietf.org/html/rfc4880#section-5.13>
+	-- or <http://tools.ietf.org/html/rfc4880#section-5.7> when version is 0
+	ModificationDetectionCodePacket B.ByteString | -- ^ <http://tools.ietf.org/html/rfc4880#section-5.14>
 	UnsupportedPacket Word8 B.ByteString
 	deriving (Show, Read, Eq)
 
@@ -830,7 +839,7 @@ instance BINARY_CLASS RevocationCode where
 	put = put . enum_to_word8
 	get = fmap enum_from_word8 get
 
--- A message is encoded as a list that takes the entire file
+-- | A message is encoded as a list that takes the entire file
 newtype Message = Message [Packet] deriving (Show, Read, Eq)
 instance BINARY_CLASS Message where
 	put (Message xs) = mapM_ put xs
@@ -846,6 +855,7 @@ signatures_and_data (Message lst) =
 	isDta (LiteralDataPacket {}) = True
 	isDta _ = False
 
+-- | <http://tools.ietf.org/html/rfc4880#section-3.2>
 newtype MPI = MPI Integer deriving (Show, Read, Eq, Ord)
 instance BINARY_CLASS MPI where
 	put (MPI i)
@@ -879,15 +889,15 @@ listUntilEnd = do
 		rest <- listUntilEnd
 		return (next:rest)
 
--- http://tools.ietf.org/html/rfc4880#section-5.2.3.1
+-- | <http://tools.ietf.org/html/rfc4880#section-5.2.3.1>
 data SignatureSubpacket =
 	SignatureCreationTimePacket Word32 |
-	SignatureExpirationTimePacket Word32 | -- seconds after CreationTime
+	SignatureExpirationTimePacket Word32 | -- ^ seconds after CreationTime
 	ExportableCertificationPacket Bool |
 	TrustSignaturePacket {depth::Word8, trust::Word8} |
 	RegularExpressionPacket String |
 	RevocablePacket Bool |
-	KeyExpirationTimePacket Word32 | -- seconds after key CreationTime
+	KeyExpirationTimePacket Word32 | -- ^ seconds after key CreationTime
 	PreferredSymmetricAlgorithmsPacket [SymmetricAlgorithm] |
 	RevocationKeyPacket {
 		sensitive::Bool,
@@ -1160,7 +1170,12 @@ signature_issuer (SignaturePacket {hashed_subpackets = hashed,
 	isIssuer _ = False
 signature_issuer _ = Nothing
 
-find_key :: (Packet -> String) -> Message -> String -> Maybe Packet
+-- | Find a key with the given Fingerprint/KeyID
+find_key ::
+	(Packet -> String) -- ^ Extract Fingerprint/KeyID from packet
+	-> Message         -- ^ List of packets (some of which are keys)
+	-> String          -- ^ Fingerprint/KeyID to search for
+	-> Maybe Packet
 find_key fpr (Message (x@(PublicKeyPacket {}):xs)) keyid =
 	find_key' fpr x xs keyid
 find_key fpr (Message (x@(SecretKeyPacket {}):xs)) keyid =
@@ -1177,7 +1192,18 @@ find_key' fpr x xs keyid
 	thisid = reverse $ take (length keyid) (reverse (fpr x))
 
 -- | SignaturePacket smart constructor
-signaturePacket :: Word8 -> Word8 -> KeyAlgorithm -> HashAlgorithm -> [SignatureSubpacket] -> [SignatureSubpacket] -> Word16 -> [MPI] -> Packet
+--
+--   <http://tools.ietf.org/html/rfc4880#section-5.2>
+signaturePacket ::
+	Word8    -- ^ Signature version (probably 4)
+	-> Word8 -- ^ Signature type <http://tools.ietf.org/html/rfc4880#section-5.2.1>
+	-> KeyAlgorithm
+	-> HashAlgorithm
+	-> [SignatureSubpacket] -- ^ Hashed subpackets (these get signed)
+	-> [SignatureSubpacket] -- ^ Unhashed subpackets (these do not get signed)
+	-> Word16 -- ^ Left 16 bits of the signed hash value
+	-> [MPI] -- ^ The raw MPIs of the signature
+	-> Packet
 signaturePacket version signature_type key_algorithm hash_algorithm hashed_subpackets unhashed_subpackets hash_head signature =
 	let p = SignaturePacket {
 		version = version,

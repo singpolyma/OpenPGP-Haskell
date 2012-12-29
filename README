@@ -11,6 +11,9 @@ For performing cryptography, see
 <http://hackage.haskell.org/package/openpgp-crypto-api> or
 <http://hackage.haskell.org/package/openpgp-Crypto>
 
+For dealing with ASCII armor, see
+<http://hackage.haskell.org/package/openpgp-asciiarmor>
+
 It is intended that you use qualified imports with this library.
 
 > import qualified Data.OpenPGP as OpenPGP
