@@ -158,6 +158,9 @@ assertProp f x = assert (f x) x
 pad :: Int -> String -> String
 pad l s = replicate (l - length s) '0' ++ s
 
+padBS :: Int -> B.ByteString -> B.ByteString
+padBS l s = B.replicate (fromIntegral l - B.length s) 0 `B.append` s
+
 data Packet =
 	AsymmetricSessionKeyPacket {
 		version::Word8,
@@ -964,7 +967,7 @@ put_signature_subpacket (RevocationKeyPacket sensitive kalgo fpr) =
 	(B.concat [encode bitfield, encode kalgo, fprb], 12)
 	where
 	bitfield = 0x80 .|. (if sensitive then 0x40 else 0x0) :: Word8
-	fprb = B.drop 2 $ encode (MPI fpri)
+	fprb = padBS 20 $ B.drop 2 $ encode (MPI fpri)
 	fpri = fst $ head $ readHex fpr
 put_signature_subpacket (IssuerPacket keyid) =
 	(encode (fst $ head $ readHex keyid :: Word64), 16)
