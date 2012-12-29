@@ -237,31 +237,39 @@ instance BINARY_CLASS Packet where
 		blen = fromIntegral $ B.length body
 		(body, tag) = put_packet p
 	get = do
-		tag <- get :: Get Word8
-		let (t, l) =
-			if (tag .&. 64) /= 0 then
-				(tag .&. 63, parse_new_length)
-			else
-				((tag `shiftR` 2) .&. 15, parse_old_length tag)
-		len <- l
-		-- This forces the whole packet to be consumed
-		packet <- getSomeByteString (fromIntegral len)
-		return $ unsafeRunGet (parse_packet t) packet
+		(t, packet) <- get_packet_bytes
+		return $ unsafeRunGet (parse_packet t) (B.concat packet)
+
+get_packet_bytes :: Get (Word8, [B.ByteString])
+get_packet_bytes = do
+	tag <- get
+	let (t, l) =
+		if (tag .&. 64) /= 0 then
+			(tag .&. 63, parse_new_length)
+		else
+			((tag `shiftR` 2) .&. 15, (,) <$> parse_old_length tag <*> pure False)
+	(len, partial) <- l
+	-- This forces the whole packet to be consumed
+	packet <- getSomeByteString (fromIntegral len)
+	if not partial then return (t, [packet]) else
+		(,) t <$> ((packet:) . snd) <$> get_packet_bytes
 
 -- http://tools.ietf.org/html/rfc4880#section-4.2.2
-parse_new_length :: Get Word32
+parse_new_length :: Get (Word32, Bool)
 parse_new_length = do
 	len <- fmap fromIntegral (get :: Get Word8)
 	case len of
 		-- One octet length
-		_ | len < 192 -> return len
+		_ | len < 192 -> return (len, False)
 		-- Two octet length
 		_ | len > 191 && len < 224 -> do
 			second <- fmap fromIntegral (get :: Get Word8)
-			return $ ((len - 192) `shiftL` 8) + second + 192
+			return (((len - 192) `shiftL` 8) + second + 192, False)
 		-- Five octet length
-		255 -> get :: Get Word32
-		-- TODO: Partial body lengths. 1 << (len & 0x1F)
+		255 -> (,) <$> (get :: Get Word32) <*> pure False
+		-- Partial length (streaming)
+		_ | len >= 224 && len < 255 ->
+			return (1 `shiftL` (fromIntegral len .&. 0x1F), True)
 		_ -> fail "Unsupported new packet length."
 
 -- http://tools.ietf.org/html/rfc4880#section-4.2.1
