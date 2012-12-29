@@ -151,6 +151,9 @@ lazyDecompress x            = error ("No implementation for " ++ show x)
 assertProp :: (a -> Bool) -> a -> a
 assertProp f x = assert (f x) x
 
+pad :: Int -> String -> String
+pad l s = replicate (l - length s) '0' ++ s
+
 data Packet =
 	SignaturePacket {
 		version::Word8,
@@ -475,7 +478,7 @@ parse_packet  2 = do
 				hashed_subpackets = [],
 				unhashed_subpackets = [
 					SignatureCreationTimePacket creation_time,
-					IssuerPacket $ pad $ map toUpper $ showHex keyid ""
+					IssuerPacket $ pad 16 $ map toUpper $ showHex keyid ""
 				],
 				hash_head = hash_head,
 				signature = signature,
@@ -505,8 +508,6 @@ parse_packet  2 = do
 				trailer = B.concat [encode version, encode signature_type, encode key_algorithm, encode hash_algorithm, encode (fromIntegral hashed_size :: Word16), hashed_data, B.pack [4, 0xff], encode ((6 + fromIntegral hashed_size) :: Word32)]
 			}
 		x -> fail $ "Unknown SignaturePacket version " ++ show x ++ "."
-	where
-	pad s = replicate (16 - length s) '0' ++ s
 -- OnePassSignaturePacket, http://tools.ietf.org/html/rfc4880#section-5.4
 parse_packet  4 = do
 	version <- get
@@ -520,11 +521,9 @@ parse_packet  4 = do
 		signature_type = signature_type,
 		hash_algorithm = hash_algo,
 		key_algorithm = key_algo,
-		key_id = pad $ map toUpper $ showHex key_id "",
+		key_id = pad 16 $ map toUpper $ showHex key_id "",
 		nested = nested
 	}
-	where
-	pad s = replicate (16 - length s) '0' ++ s
 -- SecretKeyPacket, http://tools.ietf.org/html/rfc4880#section-5.5.3
 parse_packet  5 = do
 	-- Parse PublicKey part
@@ -1005,19 +1004,16 @@ parse_signature_subpacket 12 = do
 		sensitive = bitfield .&. 0x40 == 0x40,
 		revocation_key_algorithm = kalgo,
 		revocation_key_fingerprint =
-			pad $ map toUpper $ foldr (padB `oo` showHex) "" (B.unpack fpr)
+			pad 40 $ map toUpper $ foldr (padB `oo` showHex) "" (B.unpack fpr)
 	}
 	where
 	oo = (.) . (.)
 	padB s | odd $ length s = '0':s
 	       | otherwise = s
-	pad s = replicate (40 - length s) '0' ++ s
 -- IssuerPacket, http://tools.ietf.org/html/rfc4880#section-5.2.3.5
 parse_signature_subpacket 16 = do
 	keyid <- get :: Get Word64
-	return $ IssuerPacket (pad $ map toUpper $ showHex keyid "")
-	where
-	pad s = replicate (16 - length s) '0' ++ s
+	return $ IssuerPacket (pad 16 $ map toUpper $ showHex keyid "")
 -- NotationDataPacket, http://tools.ietf.org/html/rfc4880#section-5.2.3.16
 parse_signature_subpacket 20 = do
 	(flag1,_,_,_) <- get4word8
