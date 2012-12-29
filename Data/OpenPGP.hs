@@ -6,6 +6,7 @@
 -- > import qualified Data.OpenPGP as OpenPGP
 module Data.OpenPGP (
 	Packet(
+		AsymmetricSessionKeyPacket,
 		OnePassSignaturePacket,
 		PublicKeyPacket,
 		SecretKeyPacket,
@@ -63,6 +64,7 @@ module Data.OpenPGP (
 import Numeric
 import Control.Monad
 import Control.Arrow
+import Control.Applicative
 import Control.Exception (assert)
 import Data.Bits
 import Data.Word
@@ -155,6 +157,12 @@ pad :: Int -> String -> String
 pad l s = replicate (l - length s) '0' ++ s
 
 data Packet =
+	AsymmetricSessionKeyPacket {
+		version::Word8,
+		key_id::String,
+		key_algorithm::KeyAlgorithm,
+		encrypted_data::B.ByteString
+	} |
 	SignaturePacket {
 		version::Word8,
 		signature_type::Word8,
@@ -339,6 +347,13 @@ calculate_signature_trailer x =
 	error ("Trying to calculate signature trailer for: " ++ show x)
 
 put_packet :: Packet -> (B.ByteString, Word8)
+put_packet (AsymmetricSessionKeyPacket version key_id key_algorithm dta) =
+	(B.concat [
+		encode version,
+		encode (fst $ head $ readHex key_id :: Word64),
+		encode key_algorithm,
+		dta
+	], 1)
 put_packet (SignaturePacket { version = v,
                               unhashed_subpackets = unhashed_subpackets,
                               key_algorithm = key_algorithm,
@@ -456,6 +471,12 @@ put_packet (UnsupportedPacket tag bytes) = (bytes, fromIntegral tag)
 put_packet x = error ("Unsupported Packet version or type in put_packet: " ++ show x)
 
 parse_packet :: Word8 -> Get Packet
+-- AsymmetricSessionKeyPacket, http://tools.ietf.org/html/rfc4880#section-5.1
+parse_packet  1 = AsymmetricSessionKeyPacket
+	<$> fmap (assertProp (==3)) get
+	<*> fmap (pad 16 . map toUpper . flip showHex "") (get :: Get Word64)
+	<*> get
+	<*> getRemainingByteString
 -- SignaturePacket, http://tools.ietf.org/html/rfc4880#section-5.2
 parse_packet  2 = do
 	version <- get
