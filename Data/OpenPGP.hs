@@ -14,6 +14,7 @@ module Data.OpenPGP (
 		MarkerPacket,
 		LiteralDataPacket,
 		UserIDPacket,
+		EncryptedDataPacket,
 		ModificationDetectionCodePacket,
 		UnsupportedPacket,
 		compression_algorithm,
@@ -217,6 +218,10 @@ data Packet =
 		content::B.ByteString
 	} |
 	UserIDPacket String |
+	EncryptedDataPacket {
+		version::Word8, -- 0 for old-skool no-MDC (tag 9)
+		encrypted_data::B.ByteString
+	} |
 	ModificationDetectionCodePacket B.ByteString |
 	UnsupportedPacket Word8 B.ByteString
 	deriving (Show, Read, Eq)
@@ -474,6 +479,9 @@ put_packet (LiteralDataPacket { format = format, filename = filename,
 	filename_l  = (fromIntegral $ B.length lz_filename) :: Word8
 	lz_filename = B.fromString filename
 put_packet (UserIDPacket txt) = (B.fromString txt, 13)
+put_packet (EncryptedDataPacket 0 encrypted_data) = (encrypted_data, 9)
+put_packet (EncryptedDataPacket version encrypted_data) =
+	(B.concat [encode version, encrypted_data], 18)
 put_packet (ModificationDetectionCodePacket bstr) = (bstr, 19)
 put_packet (UnsupportedPacket tag bytes) = (bytes, fromIntegral tag)
 put_packet x = error ("Unsupported Packet version or type in put_packet: " ++ show x)
@@ -630,6 +638,8 @@ parse_packet  8 = do
 		compression_algorithm = algorithm,
 		message = unsafeRunGet get (decompress algorithm message)
 	}
+-- EncryptedDataPacket, http://tools.ietf.org/html/rfc4880#section-5.7
+parse_packet  9 = EncryptedDataPacket 0 <$> getRemainingByteString
 -- MarkerPacket, http://tools.ietf.org/html/rfc4880#section-5.8
 parse_packet 10 = return MarkerPacket
 -- LiteralDataPacket, http://tools.ietf.org/html/rfc4880#section-5.9
@@ -652,6 +662,8 @@ parse_packet 13 =
 parse_packet 14 = do
 	p <- parse_packet 6
 	return p {is_subkey = True}
+-- EncryptedDataPacket, http://tools.ietf.org/html/rfc4880#section-5.13
+parse_packet 18 = EncryptedDataPacket <$> get <*> getRemainingByteString
 -- ModificationDetectionCodePacket, http://tools.ietf.org/html/rfc4880#section-5.14
 parse_packet 19 =
 	fmap ModificationDetectionCodePacket getRemainingByteString
