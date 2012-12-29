@@ -338,7 +338,7 @@ calculate_signature_trailer p@(SignaturePacket {version = 4}) =
 calculate_signature_trailer x =
 	error ("Trying to calculate signature trailer for: " ++ show x)
 
-put_packet :: (Num a) => Packet -> (B.ByteString, a)
+put_packet :: Packet -> (B.ByteString, Word8)
 put_packet (SignaturePacket { version = v,
                               unhashed_subpackets = unhashed_subpackets,
                               key_algorithm = key_algorithm,
@@ -418,8 +418,7 @@ put_packet (SecretKeyPacket { version = version, timestamp = timestamp,
 	where
 	(Just s2k_t) = s2k_type
 	p = fst (put_packet $
-		PublicKeyPacket version timestamp algorithm key False Nothing
-		:: (B.ByteString, Integer)) -- Supress warning
+		PublicKeyPacket version timestamp algorithm key False Nothing)
 	s = map (encode . (key !)) (secret_key_fields algorithm)
 put_packet p@(PublicKeyPacket { version = v, timestamp = timestamp,
                               key_algorithm = algorithm, key = key,
