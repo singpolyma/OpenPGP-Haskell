@@ -263,26 +263,25 @@ instance BINARY_CLASS Packet where
 		blen = fromIntegral $ B.length body
 		(body, tag) = put_packet p
 	get = do
-		(t, packet) <- get_packet_bytes
+		tag <- get
+		let (t, l) =
+			if (tag .&. 64) /= 0 then
+				(tag .&. 63, parse_new_length)
+			else
+				((tag `shiftR` 2) .&. 15, (,) <$> parse_old_length tag <*> pure False)
+		packet <- uncurry get_packet_bytes =<< l
 		localGet (parse_packet t) (B.concat packet)
 
-get_packet_bytes :: Get (Word8, [B.ByteString])
-get_packet_bytes = do
-	tag <- get
-	let (t, l) =
-		if (tag .&. 64) /= 0 then
-			(tag .&. 63, fmap (first Just) parse_new_length)
-		else
-			((tag `shiftR` 2) .&. 15, (,) <$> parse_old_length tag <*> pure False)
-	(len, partial) <- l
+get_packet_bytes :: Maybe Word32 -> Bool -> Get [B.ByteString]
+get_packet_bytes len partial = do
 	-- This forces the whole packet to be consumed
 	packet <- maybe getRemainingByteString (getSomeByteString . fromIntegral) len
-	if not partial then return (t, [packet]) else
-		(,) t <$> ((packet:) . snd) <$> get_packet_bytes
+	if not partial then return [packet] else
+		(packet:) <$> (uncurry get_packet_bytes =<< parse_new_length)
 
 -- http://tools.ietf.org/html/rfc4880#section-4.2.2
-parse_new_length :: Get (Word32, Bool)
-parse_new_length = do
+parse_new_length :: Get (Maybe Word32, Bool)
+parse_new_length = fmap (first Just) $ do
 	len <- fmap fromIntegral (get :: Get Word8)
 	case len of
 		-- One octet length
