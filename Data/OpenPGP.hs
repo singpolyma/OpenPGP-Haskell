@@ -383,7 +383,7 @@ put_packet :: Packet -> (B.ByteString, Word8)
 put_packet (AsymmetricSessionKeyPacket version key_id key_algorithm dta) =
 	(B.concat [
 		encode version,
-		encode (fst $ head $ readHex key_id :: Word64),
+		encode (fst $ head $ readHex $ takeFromEnd 16 key_id :: Word64),
 		encode key_algorithm,
 		dta
 	], 1)
@@ -431,7 +431,7 @@ put_packet (OnePassSignaturePacket { version = version,
 	(B.concat [
 		encode version, encode signature_type,
 		encode hash_algorithm, encode key_algorithm,
-		encode (fst $ head $ readHex key_id :: Word64),
+		encode (fst $ head $ readHex $ takeFromEnd 16 key_id :: Word64),
 		encode nested
 	], 4)
 put_packet (SecretKeyPacket { version = version, timestamp = timestamp,
@@ -988,7 +988,7 @@ put_signature_subpacket (RevocationKeyPacket sensitive kalgo fpr) =
 	fprb = padBS 20 $ B.drop 2 $ encode (MPI fpri)
 	fpri = fst $ head $ readHex fpr
 put_signature_subpacket (IssuerPacket keyid) =
-	(encode (fst $ head $ readHex keyid :: Word64), 16)
+	(encode (fst $ head $ readHex $ takeFromEnd 16 keyid :: Word64), 16)
 put_signature_subpacket (NotationDataPacket human_readable name value) =
 	(B.concat [
 		B.pack [flag1,0,0,0],
@@ -1188,7 +1188,10 @@ find_key' fpr x xs keyid
 	| thisid == keyid = Just x
 	| otherwise = find_key fpr (Message xs) keyid
 	where
-	thisid = reverse $ take (length keyid) (reverse (fpr x))
+	thisid = takeFromEnd (length keyid) (fpr x)
+
+takeFromEnd :: Int -> String -> String
+takeFromEnd l = reverse . take l . reverse
 
 -- | SignaturePacket smart constructor
 --
