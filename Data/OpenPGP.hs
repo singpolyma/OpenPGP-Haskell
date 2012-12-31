@@ -257,7 +257,7 @@ instance BINARY_CLASS Packet where
 				-- Use 5-octet lengths
 				put (255 :: Word8)
 				put (blen :: Word32)
-				putSomeByteString body
+		putSomeByteString body
 		where
 		blen :: (Num a) => a
 		blen = fromIntegral $ B.length body
