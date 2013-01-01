@@ -34,14 +34,11 @@ module Data.OpenPGP (
 		message,
 		nested,
 		private_hash,
-		s2k_count,
-		s2k_hash_algorithm,
-		s2k_salt,
-		s2k_type,
 		s2k_useage,
+		s2k,
 		signature,
 		signature_type,
-		symmetric_type,
+		symmetric_algorithm,
 		timestamp,
 		trailer,
 		unhashed_subpackets,
@@ -51,6 +48,7 @@ module Data.OpenPGP (
 	signaturePacket,
 	Message(..),
 	SignatureSubpacket(..),
+	S2K(..),
 	HashAlgorithm(..),
 	KeyAlgorithm(..),
 	SymmetricAlgorithm(..),
@@ -211,12 +209,9 @@ data Packet =
 		timestamp::Word32,
 		key_algorithm::KeyAlgorithm,
 		key::[(Char,MPI)],
-		s2k_useage::Word8, -- ^ determines if the 'Maybe's are 'Just' or 'Nothing'
-		symmetric_type::Maybe Word8,
-		s2k_type::Maybe Word8,
-		s2k_hash_algorithm::Maybe HashAlgorithm,
-		s2k_salt::Maybe Word64,
-		s2k_count::Maybe Word32,
+		s2k_useage::Word8,
+		s2k::Maybe S2K,
+		symmetric_algorithm::SymmetricAlgorithm,
 		encrypted_data::B.ByteString,
 		private_hash::Maybe B.ByteString, -- ^ the hash may be in the encrypted data
 		is_subkey::Bool
@@ -436,23 +431,16 @@ put_packet (OnePassSignaturePacket { version = version,
 	], 4)
 put_packet (SecretKeyPacket { version = version, timestamp = timestamp,
                               key_algorithm = algorithm, key = key,
-                              s2k_useage = s2k_useage,
-                              symmetric_type = symmetric_type,
-                              s2k_type = s2k_type,
-                              s2k_hash_algorithm = s2k_hash_algo,
-                              s2k_salt = s2k_salt,
-                              s2k_count = s2k_count,
+                              s2k_useage = s2k_useage, s2k = s2k,
+                              symmetric_algorithm = symmetric_algorithm,
                               encrypted_data = encrypted_data,
                               is_subkey = is_subkey }) =
-	(B.concat $ [p, encode s2k_useage] ++
-	(if s2k_useage `elem` [255, 254] then
-		[encode $ fromJust symmetric_type, encode s2k_t,
-		 encode $ fromJust s2k_hash_algo] ++
-		(if s2k_t `elem` [1,3] then [encode $ fromJust s2k_salt] else []) ++
-		if s2k_t == 3 then
-			[encode $ encode_s2k_count $ fromJust s2k_count] else []
-	else []) ++
-	(if s2k_useage > 0 then
+	(B.concat $ p :
+	(case s2k of
+		Just s2k -> [encode s2k_useage, encode symmetric_algorithm, encode s2k]
+		Nothing -> [encode symmetric_algorithm]
+	) ++
+	(if symmetric_algorithm /= Unencrypted then
 		[encrypted_data]
 	else s ++
 		-- XXX: Checksum is part of encrypted_data for V4 ONLY
@@ -464,7 +452,6 @@ put_packet (SecretKeyPacket { version = version, timestamp = timestamp,
 				(0::Integer) (B.concat s) :: Word16)]),
 	if is_subkey then 7 else 5)
 	where
-	(Just s2k_t) = s2k_type
 	p = fst (put_packet $
 		PublicKeyPacket version timestamp algorithm key False Nothing)
 	s = map (encode . (key !)) (secret_key_fields algorithm)
@@ -592,31 +579,22 @@ parse_packet  5 = do
 	}) <- parse_packet 6
 	s2k_useage <- get :: Get Word8
 	let k = SecretKeyPacket version timestamp algorithm key s2k_useage
-	k' <- case s2k_useage of
-		_ | s2k_useage `elem` [255, 254] -> do
-			symmetric_type <- get
-			s2k_type <- get
-			s2k_hash_algorithm <- get
-			s2k_salt <- if s2k_type `elem` [1, 3] then get
-				else return undefined
-			s2k_count <- if s2k_type == 3 then fmap decode_s2k_count get else
-				return undefined
-			return (k (Just symmetric_type) (Just s2k_type)
-				(Just s2k_hash_algorithm) (Just s2k_salt) (Just s2k_count))
+	(symmetric_algorithm, s2k) <- case () of
+		_ | s2k_useage `elem` [255, 254] -> (,) <$> get <*> fmap Just get
 		_ | s2k_useage > 0 ->
 			-- s2k_useage is symmetric_type in this case
-			return (k (Just s2k_useage) Nothing Nothing Nothing Nothing)
+			return (decode $ encode s2k_useage, Just $ SimpleS2K MD5)
 		_ ->
-			return (k Nothing Nothing Nothing Nothing Nothing)
-	if s2k_useage > 0 then do {
+			return (Unencrypted, Nothing)
+	if symmetric_algorithm /= Unencrypted then do {
 		encrypted <- getRemainingByteString;
-		return (k' encrypted Nothing False)
+		return (k s2k symmetric_algorithm encrypted Nothing False)
 	} else do
 		key <- foldM (\m f -> do
 			mpi <- get :: Get MPI
 			return $ (f,mpi):m) key (secret_key_fields algorithm)
 		private_hash <- getRemainingByteString
-		return ((k' B.empty (Just private_hash) False) {key = key})
+		return ((k s2k symmetric_algorithm B.empty (Just private_hash) False) {key = key})
 -- PublicKeyPacket, http://tools.ietf.org/html/rfc4880#section-5.5.2
 parse_packet  6 = do
 	version <- get :: Get Word8
@@ -717,6 +695,28 @@ enum_to_word8 = fromIntegral . fromEnum
 
 enum_from_word8 :: (Enum a) => Word8 -> a
 enum_from_word8 = toEnum . fromIntegral
+
+data S2K =
+	SimpleS2K HashAlgorithm |
+	SaltedS2K HashAlgorithm Word64 |
+	IteratedSaltedS2K HashAlgorithm Word64 Word32 |
+	S2K Word8 B.ByteString
+	deriving (Show, Read, Eq)
+
+instance BINARY_CLASS S2K where
+	put (SimpleS2K halgo) = put (0::Word8) >> put halgo
+	put (SaltedS2K halgo salt) = put (1::Word8) >> put halgo >> put salt
+	put (IteratedSaltedS2K halgo salt count) = put (3::Word8) >> put halgo
+		>> put salt >> put (encode_s2k_count count)
+	put (S2K t body) = put t >> putSomeByteString body
+
+	get = do
+		t <- get :: Get Word8
+		case t of
+			0 -> SimpleS2K <$> get
+			1 -> SaltedS2K <$> get <*> get
+			3 -> IteratedSaltedS2K <$> get <*> get <*> (decode_s2k_count <$> get)
+			_ -> S2K t <$> getRemainingByteString
 
 data HashAlgorithm = MD5 | SHA1 | RIPEMD160 | SHA256 | SHA384 | SHA512 | SHA224 | HashAlgorithm Word8
 	deriving (Show, Read, Eq)

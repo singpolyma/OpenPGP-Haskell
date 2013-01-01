@@ -23,7 +23,7 @@ tests/suite: tests/suite.hs Data/OpenPGP.hs Data/OpenPGP/Internal.hs Data/OpenPG
 	ghc --make $(GHCFLAGS) -o $@ $^
 
 Data/OpenPGP/Arbitrary.hs: Data/OpenPGP.hs Arbitrary.patch
-	derive -d Arbitrary -m Data.OpenPGP.Arbitrary -iData.OpenPGP -iTest.QuickCheck -iTest.QuickCheck.Instances -iNumeric -iData.Char -iData.Word -o $@ Data/OpenPGP.hs
+	derive -d Arbitrary -m Data.OpenPGP.Arbitrary -iData.OpenPGP -iData.OpenPGP.Internal -iTest.QuickCheck -iTest.QuickCheck.Instances -iNumeric -iData.Char -iData.Word -o $@ Data/OpenPGP.hs
 	patch $@ Arbitrary.patch
 
 report.html: tests/suite.hs Data/OpenPGP.hs Data/OpenPGP/Internal.hs

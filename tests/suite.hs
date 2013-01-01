@@ -44,6 +44,10 @@ prop_MPI_serialization_loop :: OpenPGP.MPI -> Bool
 prop_MPI_serialization_loop mpi =
 	mpi == decode' (encode mpi)
 
+prop_S2K_serialization_loop :: OpenPGP.S2K -> Bool
+prop_S2K_serialization_loop s2k =
+	s2k == decode' (encode s2k)
+
 prop_SignatureSubpacket_serialization_loop :: OpenPGP.SignatureSubpacket -> Bool
 prop_SignatureSubpacket_serialization_loop packet =
 	packet == decode' (encode packet)
@@ -141,6 +145,7 @@ tests =
 			testCase "uncompressed-ops-dsa-sha384.txt.gpg" (testSerialization "uncompressed-ops-dsa-sha384.txt.gpg"),
 			testCase "uncompressed-ops-rsa.gpg" (testSerialization "uncompressed-ops-rsa.gpg"),
 			testProperty "MPI encode/decode" prop_MPI_serialization_loop,
+			testProperty "S2K encode/decode" prop_S2K_serialization_loop,
 			testProperty "SignatureSubpacket encode/decode" prop_SignatureSubpacket_serialization_loop
 		],
 		testGroup "S2K count" [
