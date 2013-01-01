@@ -68,7 +68,6 @@ import Control.Applicative
 import Data.Bits
 import Data.Word
 import Data.Char
-import Data.Maybe
 import Data.List
 import Data.OpenPGP.Internal
 import qualified Data.ByteString.Lazy as LZ
@@ -326,7 +325,7 @@ secret_key_fields DSA     = ['x']
 secret_key_fields _       = undefined -- Nothing in the spec. Maybe empty
 
 (!) :: (Eq k) => [(k,v)] -> k -> v
-(!) xs = fromJust . (`lookup` xs)
+(!) xs k = let Just x = lookup k xs in x
 
 -- Need this seperate for trailer calculation
 signature_packet_start :: Packet -> B.ByteString
@@ -461,7 +460,7 @@ put_packet p@(PublicKeyPacket { version = v, timestamp = timestamp,
 	| v == 3 =
 		final (B.concat $ [
 			B.singleton 3, encode timestamp,
-			encode (fromJust $ v3_days_of_validity p),
+			encode v3_days,
 			encode algorithm
 		] ++ material)
 	| v == 4 =
@@ -469,6 +468,7 @@ put_packet p@(PublicKeyPacket { version = v, timestamp = timestamp,
 			B.singleton 4, encode timestamp, encode algorithm
 		] ++ material)
 	where
+	Just v3_days = v3_days_of_validity p
 	final x = (x, if is_subkey then 14 else 6)
 	material = map (encode . (key !)) (public_key_fields algorithm)
 put_packet (CompressedDataPacket { compression_algorithm = algorithm,
