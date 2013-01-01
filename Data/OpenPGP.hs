@@ -8,6 +8,7 @@ module Data.OpenPGP (
 	Packet(
 		AsymmetricSessionKeyPacket,
 		OnePassSignaturePacket,
+		SymmetricSessionKeyPacket,
 		PublicKeyPacket,
 		SecretKeyPacket,
 		CompressedDataPacket,
@@ -185,6 +186,13 @@ data Packet =
 		trailer::B.ByteString
 	} |
 	-- ^ <http://tools.ietf.org/html/rfc4880#section-5.2>
+	SymmetricSessionKeyPacket {
+		version::Word8,
+		symmetric_algorithm::SymmetricAlgorithm,
+		s2k::S2K,
+		encrypted_data::B.ByteString
+	} |
+	-- ^ <http://tools.ietf.org/html/rfc4880#section-5.3>
 	OnePassSignaturePacket {
 		version::Word8,
 		signature_type::Word8,
@@ -209,7 +217,7 @@ data Packet =
 		key_algorithm::KeyAlgorithm,
 		key::[(Char,MPI)],
 		s2k_useage::Word8,
-		s2k::Maybe S2K,
+		s2k::S2K, -- ^ This is meaningless if symmetric_algorithm == Unencrypted
 		symmetric_algorithm::SymmetricAlgorithm,
 		encrypted_data::B.ByteString,
 		private_hash::Maybe B.ByteString, -- ^ the hash may be in the encrypted data
@@ -403,6 +411,8 @@ put_packet (SignaturePacket { version = v,
 	Just (IssuerPacket keyidS) = find isIssuer unhashed_subpackets
 	isIssuer (IssuerPacket {}) = True
 	isIssuer _ = False
+put_packet (SymmetricSessionKeyPacket version salgo s2k encd) =
+	(B.concat [encode version, encode salgo, encode s2k, encd], 3)
 put_packet (SignaturePacket { version = 4,
                               unhashed_subpackets = unhashed_subpackets,
                               hash_head = hash_head,
@@ -435,9 +445,10 @@ put_packet (SecretKeyPacket { version = version, timestamp = timestamp,
                               encrypted_data = encrypted_data,
                               is_subkey = is_subkey }) =
 	(B.concat $ p :
-	(case s2k of
-		Just s2k -> [encode s2k_useage, encode symmetric_algorithm, encode s2k]
-		Nothing -> [encode symmetric_algorithm]
+	(if s2k_useage `elem` [254,255] then
+		[encode s2k_useage, encode symmetric_algorithm, encode s2k]
+	else
+		[encode symmetric_algorithm]
 	) ++
 	(if symmetric_algorithm /= Unencrypted then
 		[encrypted_data]
@@ -552,6 +563,12 @@ parse_packet  2 = do
 				trailer = B.concat [encode version, encode signature_type, encode key_algorithm, encode hash_algorithm, encode (fromIntegral hashed_size :: Word16), hashed_data, B.pack [4, 0xff], encode ((6 + fromIntegral hashed_size) :: Word32)]
 			}
 		x -> fail $ "Unknown SignaturePacket version " ++ show x ++ "."
+-- SymmetricSessionKeyPacket, http://tools.ietf.org/html/rfc4880#section-5.3
+parse_packet  3 = SymmetricSessionKeyPacket
+	<$> (assertProp (==4) =<< get)
+	<*> get
+	<*> get
+	<*> getRemainingByteString
 -- OnePassSignaturePacket, http://tools.ietf.org/html/rfc4880#section-5.4
 parse_packet  4 = do
 	version <- get
@@ -580,12 +597,12 @@ parse_packet  5 = do
 	s2k_useage <- get :: Get Word8
 	let k = SecretKeyPacket version timestamp algorithm key s2k_useage
 	(symmetric_algorithm, s2k) <- case () of
-		_ | s2k_useage `elem` [255, 254] -> (,) <$> get <*> fmap Just get
+		_ | s2k_useage `elem` [255, 254] -> (,) <$> get <*> get
 		_ | s2k_useage > 0 ->
 			-- s2k_useage is symmetric_type in this case
-			return (decode $ encode s2k_useage, Just $ SimpleS2K MD5)
+			return (decode $ encode s2k_useage, SimpleS2K MD5)
 		_ ->
-			return (Unencrypted, Nothing)
+			return (Unencrypted, S2K 100 B.empty)
 	if symmetric_algorithm /= Unencrypted then do {
 		encrypted <- getRemainingByteString;
 		return (k s2k symmetric_algorithm encrypted Nothing False)

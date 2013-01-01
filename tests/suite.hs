@@ -141,6 +141,7 @@ tests =
 			testCase "compressedsig-zlib.gpg" (testSerialization "compressedsig-zlib.gpg"),
 			testCase "compressedsig-bzip2.gpg" (testSerialization "compressedsig-bzip2.gpg"),
 			testCase "onepass_sig" (testSerialization "onepass_sig"),
+			testCase "symmetrically_encrypted" (testSerialization "symmetrically_encrypted"),
 			testCase "uncompressed-ops-dsa.gpg" (testSerialization "uncompressed-ops-dsa.gpg"),
 			testCase "uncompressed-ops-dsa-sha384.txt.gpg" (testSerialization "uncompressed-ops-dsa-sha384.txt.gpg"),
 			testCase "uncompressed-ops-rsa.gpg" (testSerialization "uncompressed-ops-rsa.gpg"),

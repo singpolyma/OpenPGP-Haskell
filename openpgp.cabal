@@ -120,6 +120,7 @@ extra-source-files:
         tests/data/compressedsig.gpg,
         tests/data/compressedsig-zlib.gpg,
         tests/data/onepass_sig,
+        tests/data/symmetrically_encrypted,
         tests/data/pubring.gpg,
         tests/data/secring.gpg,
         tests/data/uncompressed-ops-dsa.gpg,
