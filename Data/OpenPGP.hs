@@ -50,6 +50,7 @@ module Data.OpenPGP (
 	Message(..),
 	SignatureSubpacket(..),
 	S2K(..),
+	string2key,
 	HashAlgorithm(..),
 	KeyAlgorithm(..),
 	SymmetricAlgorithm(..),
@@ -71,6 +72,7 @@ import Data.Word
 import Data.Char
 import Data.List
 import Data.OpenPGP.Internal
+import qualified Data.ByteString as BS
 import qualified Data.ByteString.Lazy as LZ
 
 #ifdef CEREAL
@@ -734,6 +736,26 @@ instance BINARY_CLASS S2K where
 			1 -> SaltedS2K <$> get <*> get
 			3 -> IteratedSaltedS2K <$> get <*> get <*> (decode_s2k_count <$> get)
 			_ -> S2K t <$> getRemainingByteString
+
+-- | Take a hash function and an 'S2K' value and generate the bytes
+--   needed for creating a symmetric key.
+--
+-- Return value is always infinite length.
+-- Take the first n bytes you need for your keysize.
+string2key :: (HashAlgorithm -> LZ.ByteString -> BS.ByteString) -> S2K -> LZ.ByteString -> LZ.ByteString
+string2key hsh (SimpleS2K halgo) s = infiniHashes (hsh halgo) s
+string2key hsh (SaltedS2K halgo salt) s =
+	infiniHashes (hsh halgo) (encode salt `LZ.append` s)
+string2key hsh (IteratedSaltedS2K halgo salt count) s =
+	infiniHashes (hsh halgo) $
+	LZ.take (max (fromIntegral count) (LZ.length s))
+	(LZ.cycle $ encode salt `LZ.append` s)
+string2key _ s2k _ = error $ "Unsupported S2K specifier: " ++ show s2k
+
+infiniHashes :: (LZ.ByteString -> BS.ByteString) -> LZ.ByteString -> LZ.ByteString
+infiniHashes hsh s = LZ.fromChunks (hs 0)
+	where
+	hs c = hsh (LZ.replicate c 0 `LZ.append` s) : hs (c+1)
 
 data HashAlgorithm = MD5 | SHA1 | RIPEMD160 | SHA256 | SHA384 | SHA512 | SHA224 | HashAlgorithm Word8
 	deriving (Show, Read, Eq)
