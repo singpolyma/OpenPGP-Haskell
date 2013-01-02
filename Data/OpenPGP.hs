@@ -67,6 +67,7 @@ import Numeric
 import Control.Monad
 import Control.Arrow
 import Control.Applicative
+import Data.Monoid
 import Data.Bits
 import Data.Word
 import Data.Char
@@ -882,6 +883,10 @@ newtype Message = Message [Packet] deriving (Show, Read, Eq)
 instance BINARY_CLASS Message where
 	put (Message xs) = mapM_ put xs
 	get = fmap Message listUntilEnd
+
+instance Monoid Message where
+	mempty = Message []
+	mappend (Message a) (Message b) = Message (a ++ b)
 
 -- | Extract all signature and data packets from a 'Message'
 signatures_and_data :: Message -> ([Packet], [Packet])
