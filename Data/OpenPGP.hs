@@ -59,7 +59,9 @@ module Data.OpenPGP (
 	find_key,
 	fingerprint_material,
 	signatures_and_data,
-	signature_issuer
+	signature_issuer,
+	public_key_fields,
+	secret_key_fields
 ) where
 
 import Numeric
