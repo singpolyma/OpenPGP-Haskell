@@ -34,7 +34,6 @@ module Data.OpenPGP (
 		key_id,
 		message,
 		nested,
-		private_hash,
 		s2k_useage,
 		s2k,
 		signature,
@@ -223,7 +222,6 @@ data Packet =
 		s2k::S2K, -- ^ This is meaningless if symmetric_algorithm == Unencrypted
 		symmetric_algorithm::SymmetricAlgorithm,
 		encrypted_data::B.ByteString,
-		private_hash::Maybe B.ByteString, -- ^ the hash may be in the encrypted data
 		is_subkey::Bool
 	} |
 	-- ^ <http://tools.ietf.org/html/rfc4880#section-5.5.1.3> (also subkey)
@@ -456,7 +454,7 @@ put_packet (SecretKeyPacket { version = version, timestamp = timestamp,
 	(if symmetric_algorithm /= Unencrypted then
 		[encrypted_data]
 	else s ++
-		-- XXX: Checksum is part of encrypted_data for V4 ONLY
+		-- TODO: Checksum is part of encrypted_data for V4 ONLY
 		if s2k_useage == 254 then
 			[B.replicate 20 0] -- TODO SHA1 Checksum
 		else
@@ -608,13 +606,14 @@ parse_packet  5 = do
 			return (Unencrypted, S2K 100 B.empty)
 	if symmetric_algorithm /= Unencrypted then do {
 		encrypted <- getRemainingByteString;
-		return (k s2k symmetric_algorithm encrypted Nothing False)
+		return (k s2k symmetric_algorithm encrypted False)
 	} else do
 		key <- foldM (\m f -> do
 			mpi <- get :: Get MPI
 			return $ (f,mpi):m) key (secret_key_fields algorithm)
-		private_hash <- getRemainingByteString
-		return ((k s2k symmetric_algorithm B.empty (Just private_hash) False) {key = key})
+		checksum <- getRemainingByteString
+		-- TODO: verify checksum
+		return ((k s2k symmetric_algorithm B.empty False) {key = key})
 -- PublicKeyPacket, http://tools.ietf.org/html/rfc4880#section-5.5.2
 parse_packet  6 = do
 	version <- get :: Get Word8
