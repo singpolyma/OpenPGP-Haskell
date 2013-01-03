@@ -414,7 +414,7 @@ put_packet (SignaturePacket { version = v,
 		encode hash_head
 	] ++ map encode signature, 2)
 	where
-	keyid = fst $ head $ readHex keyidS :: Word64
+	keyid = fst $ head $ readHex $ takeFromEnd 16 keyidS :: Word64
 	Just (IssuerPacket keyidS) = find isIssuer unhashed_subpackets
 	isIssuer (IssuerPacket {}) = True
 	isIssuer _ = False
