@@ -170,6 +170,10 @@ pad l s = replicate (l - length s) '0' ++ s
 padBS :: Int -> B.ByteString -> B.ByteString
 padBS l s = B.replicate (fromIntegral l - B.length s) 0 `B.append` s
 
+checksum :: B.ByteString -> Word16
+checksum = fromIntegral .
+	B.foldl (\c i -> (c + fromIntegral i) `mod` 65536) (0::Integer)
+
 data Packet =
 	AsymmetricSessionKeyPacket {
 		version::Word8,
@@ -454,15 +458,11 @@ put_packet (SecretKeyPacket { version = version, timestamp = timestamp,
 		[encode symmetric_algorithm]
 	) ++
 	(if symmetric_algorithm /= Unencrypted then
+		-- For V3 keys, the "encrypted data" has an unencrypted checksum
+		-- of the unencrypted MPIs on the end
 		[encrypted_data]
 	else s ++
-		-- TODO: Checksum is part of encrypted_data for V4 ONLY
-		if s2k_useage == 254 then
-			[B.replicate 20 0] -- TODO SHA1 Checksum
-		else
-			[encode (fromIntegral $
-				B.foldl (\c i -> (c + fromIntegral i) `mod` 65536)
-				(0::Integer) (B.concat s) :: Word16)]),
+		[encode $ checksum $ B.concat s]),
 	if is_subkey then 7 else 5)
 	where
 	p = fst (put_packet $
@@ -610,12 +610,13 @@ parse_packet  5 = do
 		encrypted <- getRemainingByteString;
 		return (k s2k symmetric_algorithm encrypted False)
 	} else do
-		key <- foldM (\m f -> do
+		skey <- foldM (\m f -> do
 			mpi <- get :: Get MPI
-			return $ (f,mpi):m) key (secret_key_fields algorithm)
-		checksum <- getRemainingByteString
-		-- TODO: verify checksum
-		return ((k s2k symmetric_algorithm B.empty False) {key = key})
+			return $ (f,mpi):m) [] (secret_key_fields algorithm)
+		chk <- get
+		when (checksum (B.concat $ map (encode . snd) skey) /= chk) $
+			fail "Checksum verification failed for unencrypted secret key"
+		return ((k s2k symmetric_algorithm B.empty False) {key = key ++ skey})
 -- PublicKeyPacket, http://tools.ietf.org/html/rfc4880#section-5.5.2
 parse_packet  6 = do
 	version <- get :: Get Word8
