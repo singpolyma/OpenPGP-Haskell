@@ -58,7 +58,8 @@ module Data.OpenPGP (
 	MPI(..),
 	find_key,
 	fingerprint_material,
-	signatures_and_data,
+	SignatureOver(..),
+	signatures,
 	signature_issuer,
 	public_key_fields,
 	secret_key_fields
@@ -890,15 +891,50 @@ instance Monoid Message where
 	mempty = Message []
 	mappend (Message a) (Message b) = Message (a ++ b)
 
--- | Extract all signature and data packets from a 'Message'
-signatures_and_data :: Message -> ([Packet], [Packet])
-signatures_and_data (Message ((CompressedDataPacket {message = m}):_)) =
-	signatures_and_data m
-signatures_and_data (Message lst) =
-	(filter isSignaturePacket lst, filter isDta lst)
+-- | Data needed to verify a signature
+data SignatureOver =
+	DataSignature Packet [Packet] |
+	-- ^ LiteralData, [Signature]
+	KeySignature Packet [Packet]  |
+	-- ^ Revocation. Key, [Signature]
+	SubkeySignature Packet Packet [Packet]  |
+	-- ^ Revocation or subkey binding. Key, Subkey, [Signature]
+	CertificationSignature Packet Packet [Packet]
+	-- ^ KeyPacket, (UserID | UserAttribute), [Signature]
+
+-- | Extract signed objects from a well-formatted message
+--
+-- Recurses into CompressedDataPacket
+--
+-- <http://tools.ietf.org/html/rfc4880#section-11>
+signatures :: Message -> [SignatureOver]
+signatures (Message [CompressedDataPacket _ m]) = signatures m
+signatures (Message ps) =
+	maybe (paired_sigs Nothing ps) (\p -> [DataSignature p sigs]) (find isDta ps)
 	where
+	sigs = filter isSignaturePacket ps
 	isDta (LiteralDataPacket {}) = True
 	isDta _ = False
+
+-- TODO: UserAttribute
+paired_sigs :: Maybe Packet -> [Packet] -> [SignatureOver]
+paired_sigs _ [] = []
+paired_sigs _ (p@(PublicKeyPacket {is_subkey = False}):ps) =
+	KeySignature p (takeWhile isSignaturePacket ps) :
+	paired_sigs (Just p) (dropWhile isSignaturePacket ps)
+paired_sigs _ (p@(SecretKeyPacket {is_subkey = False}):ps) =
+	KeySignature p (takeWhile isSignaturePacket ps) :
+	paired_sigs (Just p) (dropWhile isSignaturePacket ps)
+paired_sigs (Just k) (p@(PublicKeyPacket {is_subkey = True}):ps) =
+	SubkeySignature k p (takeWhile isSignaturePacket ps) :
+	paired_sigs (Just p) (dropWhile isSignaturePacket ps)
+paired_sigs (Just k) (p@(SecretKeyPacket {is_subkey = True}):ps) =
+	SubkeySignature k p (takeWhile isSignaturePacket ps) :
+	paired_sigs (Just p) (dropWhile isSignaturePacket ps)
+paired_sigs (Just k) (p@(UserIDPacket {}):ps) =
+	CertificationSignature k p (takeWhile isSignaturePacket ps) :
+	paired_sigs (Just p) (dropWhile isSignaturePacket ps)
+paired_sigs k (_:ps) = paired_sigs k ps
 
 -- | <http://tools.ietf.org/html/rfc4880#section-3.2>
 newtype MPI = MPI Integer deriving (Show, Read, Eq, Ord)
