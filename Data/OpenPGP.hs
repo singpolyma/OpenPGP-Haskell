@@ -79,12 +79,12 @@ import qualified Data.ByteString as BS
 import qualified Data.ByteString.Lazy as LZ
 
 #ifdef CEREAL
-import Data.Serialize
+import Data.Serialize hiding (decode)
 import qualified Data.ByteString as B
 import qualified Data.ByteString.UTF8 as B (toString, fromString)
 #define BINARY_CLASS Serialize
 #else
-import Data.Binary
+import Data.Binary hiding (decode)
 import Data.Binary.Get
 import Data.Binary.Put
 import qualified Data.ByteString.Lazy as B
@@ -122,6 +122,9 @@ toStrictBS = B.concat . LZ.toChunks
 
 toLazyBS :: B.ByteString -> LZ.ByteString
 toLazyBS = LZ.fromChunks . (:[])
+
+lazyEncode :: (Serialize a) => a -> LZ.ByteString
+lazyEncode = toLazyBS . encode
 #else
 getRemainingByteString :: Get B.ByteString
 getRemainingByteString = getRemainingLazyByteString
@@ -144,6 +147,9 @@ compress = lazyCompress
 
 decompress :: CompressionAlgorithm -> B.ByteString -> B.ByteString
 decompress = lazyDecompress
+
+lazyEncode :: (Binary a) => a -> LZ.ByteString
+lazyEncode = encode
 #endif
 
 lazyCompress :: CompressionAlgorithm -> LZ.ByteString -> LZ.ByteString
@@ -604,7 +610,7 @@ parse_packet  5 = do
 		_ | s2k_useage `elem` [255, 254] -> (,) <$> get <*> get
 		_ | s2k_useage > 0 ->
 			-- s2k_useage is symmetric_type in this case
-			return (decode $ encode s2k_useage, SimpleS2K MD5)
+			(,) <$> localGet get (encode s2k_useage) <*> pure (SimpleS2K MD5)
 		_ ->
 			return (Unencrypted, S2K 100 B.empty)
 	if symmetric_algorithm /= Unencrypted then do {
@@ -749,11 +755,11 @@ instance BINARY_CLASS S2K where
 string2key :: (HashAlgorithm -> LZ.ByteString -> BS.ByteString) -> S2K -> LZ.ByteString -> LZ.ByteString
 string2key hsh (SimpleS2K halgo) s = infiniHashes (hsh halgo) s
 string2key hsh (SaltedS2K halgo salt) s =
-	infiniHashes (hsh halgo) (encode salt `LZ.append` s)
+	infiniHashes (hsh halgo) (lazyEncode salt `LZ.append` s)
 string2key hsh (IteratedSaltedS2K halgo salt count) s =
 	infiniHashes (hsh halgo) $
 	LZ.take (max (fromIntegral count) (LZ.length s))
-	(LZ.cycle $ encode salt `LZ.append` s)
+	(LZ.cycle $ lazyEncode salt `LZ.append` s)
 string2key _ s2k _ = error $ "Unsupported S2K specifier: " ++ show s2k
 
 infiniHashes :: (LZ.ByteString -> BS.ByteString) -> LZ.ByteString -> LZ.ByteString
