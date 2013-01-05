@@ -899,14 +899,29 @@ instance Monoid Message where
 
 -- | Data needed to verify a signature
 data SignatureOver =
-	DataSignature Packet [Packet] |
-	-- ^ LiteralData, [Signature]
-	KeySignature Packet [Packet]  |
-	-- ^ Revocation. Key, [Signature]
-	SubkeySignature Packet Packet [Packet]  |
-	-- ^ Revocation or subkey binding. Key, Subkey, [Signature]
-	CertificationSignature Packet Packet [Packet]
-	-- ^ KeyPacket, (UserID | UserAttribute), [Signature]
+	DataSignature {literal::Packet, signatures_over::[Packet]} |
+	KeySignature {topkey::Packet, signatures_over::[Packet]} |
+	SubkeySignature {topkey::Packet, subkey::Packet, signatures_over::[Packet]} |
+	CertificationSignature {topkey::Packet, user_id::Packet, signatures_over::[Packet]}
+	deriving (Show, Read, Eq)
+
+-- To get the signed-over bytes
+instance BINARY_CLASS SignatureOver where
+	put (DataSignature (LiteralDataPacket {content = c}) _) =
+		putSomeByteString c
+	put (KeySignature k _) = mapM_ putSomeByteString (fingerprint_material k)
+	put (SubkeySignature k s _) = mapM_ (mapM_ putSomeByteString)
+		[fingerprint_material k, fingerprint_material s]
+	put (CertificationSignature k (UserIDPacket s) _) =
+		mapM_ (mapM_ putSomeByteString) [fingerprint_material k, [
+			B.singleton 0xB4,
+			encode ((fromIntegral $ B.length bs) :: Word32),
+			bs
+		]]
+		where
+		bs = B.fromString s
+	put x = fail $ "Malformed signature: " ++ show x
+	get = fail "Cannot meaningfully parse bytes to be signed over."
 
 -- | Extract signed objects from a well-formatted message
 --
