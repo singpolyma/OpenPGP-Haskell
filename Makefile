@@ -58,7 +58,7 @@ endif
 clean:
 	-printf '1c\nname:            openpgp\n.\n,s/cereal,$$/binary >= 0.6.4.0,/g\nw\nq\n' | ed openpgp.cabal
 	find -name '*.o' -o -name '*.hi' | xargs $(RM)
-	$(RM) sign verify keygen tests/suite
+	$(RM) sign verify keygen tests/suite Data/OpenPGP/Arbitrary.hs
 	$(RM) -r dist dist-ghc
 
 debian/control: openpgp.cabal
