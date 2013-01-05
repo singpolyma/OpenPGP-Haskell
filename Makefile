@@ -4,6 +4,10 @@ else
 GHCFLAGS=-Wall -O2 -fno-warn-name-shadowing -XHaskell98
 endif
 
+ifdef TRAVIS
+GHCFLAGS+=-Werror
+endif
+
 HLINTFLAGS=-u -XHaskell98 -XCPP -i 'Use camelCase' -i 'Use String' -i 'Use string literal' -i 'Use list comprehension'
 VERSION=0.5
 
