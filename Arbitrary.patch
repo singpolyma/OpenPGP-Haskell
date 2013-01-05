@@ -1,5 +1,8 @@
 --- Data/OpenPGP/Arbitrary.hs	2012-04-27 12:38:11.492411339 -0500
 +++ arb.s	2012-04-27 12:37:57.176469214 -0500
+@@ -1 +1,2 @@
++{-# OPTIONS_GHC -fno-warn-orphans -fno-warn-unused-imports #-}
+ module Data.OpenPGP.Arbitrary where
 @@ -14,13 +14,18 @@
                     1 -> do x1 <- arbitrary
                             x2 <- arbitrary
