@@ -1,0 +1,2 @@
+before_install: "cabal install hlint derive"
+script: "make Data/OpenPGP/Arbitrary.hs && make report.html && [ ! -e report.html ] && make dist/setup-config && make test && make clean && make Data/OpenPGP/Arbitrary.hs && make CEREAL=1 dist/setup/config && make CEREAL=1 test"
