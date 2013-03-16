@@ -954,7 +954,7 @@ paired_sigs (Just k) (p@(SecretKeyPacket {is_subkey = True}):ps) =
 	paired_sigs (Just p) (dropWhile isSignaturePacket ps)
 paired_sigs (Just k) (p@(UserIDPacket {}):ps) =
 	CertificationSignature k p (takeWhile isSignaturePacket ps) :
-	paired_sigs (Just p) (dropWhile isSignaturePacket ps)
+	paired_sigs (Just k) (dropWhile isSignaturePacket ps)
 paired_sigs k (_:ps) = paired_sigs k ps
 
 -- | <http://tools.ietf.org/html/rfc4880#section-3.2>
