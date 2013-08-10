@@ -145,6 +145,8 @@ tests =
 			testCase "uncompressed-ops-dsa.gpg" (testSerialization "uncompressed-ops-dsa.gpg"),
 			testCase "uncompressed-ops-dsa-sha384.txt.gpg" (testSerialization "uncompressed-ops-dsa-sha384.txt.gpg"),
 			testCase "uncompressed-ops-rsa.gpg" (testSerialization "uncompressed-ops-rsa.gpg"),
+			testCase "3F5BBA0B0694BEB6000005-002.sig" (testSerialization "3F5BBA0B0694BEB6000005-002.sig"),
+			testCase "3F5BBA0B0694BEB6000017-002.sig" (testSerialization "3F5BBA0B0694BEB6000017-002.sig"),
 			testProperty "MPI encode/decode" prop_MPI_serialization_loop,
 			testProperty "S2K encode/decode" prop_S2K_serialization_loop,
 			testProperty "SignatureSubpacket encode/decode" prop_SignatureSubpacket_serialization_loop

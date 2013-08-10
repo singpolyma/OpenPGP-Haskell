@@ -1051,9 +1051,9 @@ instance BINARY_CLASS SignatureSubpacket where
 	get = do
 		len <- fmap fromIntegral (get :: Get Word8)
 		len <- case len of
-			_ | len > 190 && len < 255 -> do -- Two octet length
+			_ | len >= 192 && len < 255 -> do -- Two octet length
 				second <- fmap fromIntegral (get :: Get Word8)
-				return $ ((len - 192) `shiftR` 8) + second + 192
+				return $ ((len - 192) `shiftL` 8) + second + 192
 			255 -> -- Five octet length
 				fmap fromIntegral (get :: Get Word32)
 			_ -> -- One octet length, no furthur processing
