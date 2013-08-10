@@ -1251,10 +1251,7 @@ parse_signature_subpacket 31 =
 	liftM3 SignatureTargetPacket get get getRemainingByteString
 -- EmbeddedSignaturePacket, http://tools.ietf.org/html/rfc4880#section-5.2.3.26
 parse_signature_subpacket 32 =
-	fmap (EmbeddedSignaturePacket . forceSignature) (parse_packet 2)
-	where
-	forceSignature x@(SignaturePacket {}) = x
-	forceSignature _ = error "EmbeddedSignature must contain signature"
+	fmap EmbeddedSignaturePacket (parse_packet 2)
 -- Represent unsupported packets as their tag and literal bytes
 parse_signature_subpacket tag =
 	fmap (UnsupportedSignatureSubpacket tag) getRemainingByteString
