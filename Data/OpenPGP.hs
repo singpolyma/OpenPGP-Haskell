@@ -948,10 +948,10 @@ paired_sigs _ (p@(SecretKeyPacket {is_subkey = False}):ps) =
 	paired_sigs (Just p) (dropWhile isSignaturePacket ps)
 paired_sigs (Just k) (p@(PublicKeyPacket {is_subkey = True}):ps) =
 	SubkeySignature k p (takeWhile isSignaturePacket ps) :
-	paired_sigs (Just p) (dropWhile isSignaturePacket ps)
+	paired_sigs (Just k) (dropWhile isSignaturePacket ps)
 paired_sigs (Just k) (p@(SecretKeyPacket {is_subkey = True}):ps) =
 	SubkeySignature k p (takeWhile isSignaturePacket ps) :
-	paired_sigs (Just p) (dropWhile isSignaturePacket ps)
+	paired_sigs (Just k) (dropWhile isSignaturePacket ps)
 paired_sigs (Just k) (p@(UserIDPacket {}):ps) =
 	CertificationSignature k p (takeWhile isSignaturePacket ps) :
 	paired_sigs (Just k) (dropWhile isSignaturePacket ps)
