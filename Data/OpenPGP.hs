@@ -669,7 +669,12 @@ parse_packet  8 = do
 -- EncryptedDataPacket, http://tools.ietf.org/html/rfc4880#section-5.7
 parse_packet  9 = EncryptedDataPacket 0 <$> getRemainingByteString
 -- MarkerPacket, http://tools.ietf.org/html/rfc4880#section-5.8
-parse_packet 10 = return MarkerPacket
+parse_packet 10 = do
+        pgp <- getSomeByteString 3
+        if pgp == (B.fromString "PGP") then
+            return MarkerPacket
+        else
+            fail $ "Invalid Marker Packet: " ++ (B.toString pgp)
 -- LiteralDataPacket, http://tools.ietf.org/html/rfc4880#section-5.9
 parse_packet 11 = do
 	format <- get
