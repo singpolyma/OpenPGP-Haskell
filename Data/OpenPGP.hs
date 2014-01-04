@@ -792,7 +792,7 @@ instance BINARY_CLASS HashAlgorithm where
 	put = put . enum_to_word8
 	get = fmap enum_from_word8 get
 
-data KeyAlgorithm = RSA | RSA_E | RSA_S | ELGAMAL | DSA | ECC | ECDSA | DH | KeyAlgorithm Word8
+data KeyAlgorithm = RSA | RSA_E | RSA_S | ELGAMAL | DSA | ECDH | ECDSA | DH | KeyAlgorithm Word8
 	deriving (Show, Read, Eq)
 
 instance Enum KeyAlgorithm where
@@ -801,7 +801,7 @@ instance Enum KeyAlgorithm where
 	toEnum 03 = RSA_S
 	toEnum 16 = ELGAMAL
 	toEnum 17 = DSA
-	toEnum 18 = ECC
+	toEnum 18 = ECDH
 	toEnum 19 = ECDSA
 	toEnum 21 = DH
 	toEnum x  = KeyAlgorithm $ fromIntegral x
@@ -810,7 +810,7 @@ instance Enum KeyAlgorithm where
 	fromEnum RSA_S   = 03
 	fromEnum ELGAMAL = 16
 	fromEnum DSA     = 17
-	fromEnum ECC     = 18
+	fromEnum ECDH    = 18
 	fromEnum ECDSA   = 19
 	fromEnum DH      = 21
 	fromEnum (KeyAlgorithm x) = fromIntegral x
