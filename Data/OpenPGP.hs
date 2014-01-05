@@ -27,7 +27,8 @@ module Data.OpenPGP (
 		hash_algorithm,
 		hashed_subpackets,
 		hash_head,
-		key,
+		pkey,
+		skey,
 		is_subkey,
 		v3_days_of_validity,
 		key_algorithm,
@@ -46,6 +47,10 @@ module Data.OpenPGP (
 	),
 	isSignaturePacket,
 	signaturePacket,
+	key_packet_algorithm,
+	public_material,
+	PublicKeyMaterial(..),
+	SecretKeyMaterial(..),
 	Message(..),
 	SignatureSubpacket(..),
 	S2K(..),
@@ -60,9 +65,7 @@ module Data.OpenPGP (
 	fingerprint_material,
 	SignatureOver(..),
 	signatures,
-	signature_issuer,
-	public_key_fields,
-	secret_key_fields
+	signature_issuer
 ) where
 
 import Numeric
@@ -77,6 +80,9 @@ import Data.List
 import Data.OpenPGP.Internal
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Lazy as LZ
+
+import qualified Crypto.Types.PubKey.RSA as RSA
+import qualified Crypto.Types.PubKey.DSA as DSA
 
 #ifdef CEREAL
 import Data.Serialize hiding (decode)
@@ -220,8 +226,7 @@ data Packet =
 	PublicKeyPacket {
 		version::Word8,
 		timestamp::Word32,
-		key_algorithm::KeyAlgorithm,
-		key::[(Char,MPI)],
+		pkey::PublicKeyMaterial,
 		is_subkey::Bool,
 		v3_days_of_validity::Maybe Word16
 	} |
@@ -229,12 +234,10 @@ data Packet =
 	SecretKeyPacket {
 		version::Word8,
 		timestamp::Word32,
-		key_algorithm::KeyAlgorithm,
-		key::[(Char,MPI)],
+		skey::SecretKeyMaterial,
 		s2k_useage::Word8,
 		s2k::S2K, -- ^ This is meaningless if symmetric_algorithm == Unencrypted
 		symmetric_algorithm::SymmetricAlgorithm,
-		encrypted_data::B.ByteString,
 		is_subkey::Bool
 	} |
 	-- ^ <http://tools.ietf.org/html/rfc4880#section-5.5.1.3> (also subkey)
@@ -327,24 +330,6 @@ parse_old_length tag =
 		3 -> return Nothing
 		-- Error
 		_ -> fail "Unsupported old packet length."
-
--- http://tools.ietf.org/html/rfc4880#section-5.5.2
-public_key_fields :: KeyAlgorithm -> [Char]
-public_key_fields RSA     = ['n', 'e']
-public_key_fields RSA_E   = public_key_fields RSA
-public_key_fields RSA_S   = public_key_fields RSA
-public_key_fields ELGAMAL = ['p', 'g', 'y']
-public_key_fields DSA     = ['p', 'q', 'g', 'y']
-public_key_fields _       = undefined -- Nothing in the spec. Maybe empty
-
--- http://tools.ietf.org/html/rfc4880#section-5.5.3
-secret_key_fields :: KeyAlgorithm -> [Char]
-secret_key_fields RSA     = ['d', 'p', 'q', 'u']
-secret_key_fields RSA_E   = secret_key_fields RSA
-secret_key_fields RSA_S   = secret_key_fields RSA
-secret_key_fields ELGAMAL = ['x']
-secret_key_fields DSA     = ['x']
-secret_key_fields _       = undefined -- Nothing in the spec. Maybe empty
 
 (!) :: (Eq k) => [(k,v)] -> k -> v
 (!) xs k = let Just x = lookup k xs in x
@@ -453,12 +438,10 @@ put_packet (OnePassSignaturePacket { version = version,
 		encode nested
 	], 4)
 put_packet (SecretKeyPacket { version = version, timestamp = timestamp,
-                              key_algorithm = algorithm, key = key,
-                              s2k_useage = s2k_useage, s2k = s2k,
+                              skey = skey, s2k_useage = s2k_useage, s2k = s2k,
                               symmetric_algorithm = symmetric_algorithm,
-                              encrypted_data = encrypted_data,
                               is_subkey = is_subkey }) =
-	(B.concat $ p :
+	(B.concat $ pub :
 	(if s2k_useage `elem` [254,255] then
 		[encode s2k_useage, encode symmetric_algorithm, encode s2k]
 	else
@@ -467,31 +450,30 @@ put_packet (SecretKeyPacket { version = version, timestamp = timestamp,
 	(if symmetric_algorithm /= Unencrypted then
 		-- For V3 keys, the "encrypted data" has an unencrypted checksum
 		-- of the unencrypted MPIs on the end
-		[encrypted_data]
-	else s ++
-		[encode $ checksum $ B.concat s]),
+		[sec]
+	else
+		[sec, encode $ checksum sec]),
 	if is_subkey then 7 else 5)
 	where
-	p = fst (put_packet $
-		PublicKeyPacket version timestamp algorithm key False Nothing)
-	s = map (encode . (key !)) (secret_key_fields algorithm)
+	pub = fst $ put_packet $ PublicKeyPacket version timestamp
+		pubMaterial False Nothing
+	(pubMaterial, sec) = encode_secret_key_fields skey
 put_packet p@(PublicKeyPacket { version = v, timestamp = timestamp,
-                              key_algorithm = algorithm, key = key,
-                              is_subkey = is_subkey })
+                              pkey = pkey, is_subkey = is_subkey })
 	| v == 3 =
-		final (B.concat $ [
+		final $ B.concat [
 			B.singleton 3, encode timestamp,
 			encode v3_days,
-			encode algorithm
-		] ++ material)
+			encode pkey
+		]
 	| v == 4 =
-		final (B.concat $ [
-			B.singleton 4, encode timestamp, encode algorithm
-		] ++ material)
+		final $ B.concat [
+			B.singleton 4, encode timestamp,
+			encode pkey
+		]
 	where
 	Just v3_days = v3_days_of_validity p
 	final x = (x, if is_subkey then 14 else 6)
-	material = map (encode . (key !)) (public_key_fields algorithm)
 put_packet (CompressedDataPacket { compression_algorithm = algorithm,
                                    message = message }) =
 	(B.append (encode algorithm) $ compress algorithm $ encode message, 8)
@@ -601,11 +583,10 @@ parse_packet  5 = do
 	(PublicKeyPacket {
 		version = version,
 		timestamp = timestamp,
-		key_algorithm = algorithm,
-		key = key
+		pkey = pkey
 	}) <- parse_packet 6
 	s2k_useage <- get :: Get Word8
-	let k = SecretKeyPacket version timestamp algorithm key s2k_useage
+	let k key = SecretKeyPacket version timestamp key s2k_useage
 	(symmetric_algorithm, s2k) <- case () of
 		_ | s2k_useage `elem` [255, 254] -> (,) <$> get <*> get
 		_ | s2k_useage > 0 ->
@@ -615,15 +596,14 @@ parse_packet  5 = do
 			return (Unencrypted, S2K 100 B.empty)
 	if symmetric_algorithm /= Unencrypted then do {
 		encrypted <- getRemainingByteString;
-		return (k s2k symmetric_algorithm encrypted False)
+		return $ k (SecretMaterialEncrypted pkey encrypted) s2k
+			symmetric_algorithm False
 	} else do
-		skey <- foldM (\m f -> do
-			mpi <- get :: Get MPI
-			return $ (f,mpi):m) [] (secret_key_fields algorithm)
+		skey <- secret_key_fields pkey
 		chk <- get
-		when (checksum (B.concat $ map (encode . snd) skey) /= chk) $
+		when (checksum (snd $ encode_secret_key_fields skey) /= chk) $
 			fail "Checksum verification failed for unencrypted secret key"
-		return ((k s2k symmetric_algorithm B.empty False) {key = key ++ skey})
+		return $ k skey s2k symmetric_algorithm False
 -- PublicKeyPacket, http://tools.ietf.org/html/rfc4880#section-5.5.2
 parse_packet  6 = do
 	version <- get :: Get Word8
@@ -631,25 +611,21 @@ parse_packet  6 = do
 		3 -> do
 			timestamp <- get
 			days <- get
-			algorithm <- get
-			key <- mapM (\f -> fmap ((,)f) get) (public_key_fields algorithm)
+			pkey <- get
 			return PublicKeyPacket {
 				version = version,
 				timestamp = timestamp,
-				key_algorithm = algorithm,
-				key = key,
+				pkey = pkey,
 				is_subkey = False,
 				v3_days_of_validity = Just days
 			}
 		4 -> do
 			timestamp <- get
-			algorithm <- get
-			key <- mapM (\f -> fmap ((,)f) get) (public_key_fields algorithm)
+			pkey <- get
 			return PublicKeyPacket {
 				version = 4,
 				timestamp = timestamp,
-				key_algorithm = algorithm,
-				key = key,
+				pkey = pkey,
 				is_subkey = False,
 				v3_days_of_validity = Nothing
 			}
@@ -710,12 +686,8 @@ fingerprint_material p | version p == 4 =
 		material
 	]
 	where
-	material = B.concat $ map (encode . (key p !))
-		(public_key_fields $ key_algorithm p)
-fingerprint_material p | version p `elem` [2, 3] = [n, e]
-	where
-	n = B.drop 2 (encode (key p ! 'n'))
-	e = B.drop 2 (encode (key p ! 'e'))
+	material = encode (public_material p)
+fingerprint_material p | version p `elem` [2, 3] = [encode (public_material p)]
 fingerprint_material _ =
 	error "Unsupported Packet version or type in fingerprint_material."
 
@@ -724,6 +696,131 @@ enum_to_word8 = fromIntegral . fromEnum
 
 enum_from_word8 :: (Enum a) => Word8 -> a
 enum_from_word8 = toEnum . fromIntegral
+
+data PublicKeyMaterial =
+	PublicMaterialRSA RSA.PublicKey |
+	PublicMaterialRSA_E RSA.PublicKey |
+	PublicMaterialRSA_S RSA.PublicKey |
+	PublicMaterialELGAMAL [(Char,Integer)] |
+	PublicMaterialDSA DSA.PublicKey |
+	PublicMaterialOther KeyAlgorithm B.ByteString
+	deriving (Show, Read, Eq)
+
+instance BINARY_CLASS PublicKeyMaterial where
+	get = get >>= public_key_fields
+	put pub = put kalgo >> putSomeByteString bytes
+		where
+		(kalgo, bytes) = encode_public_key_fields pub
+
+-- http://tools.ietf.org/html/rfc4880#section-5.5.2
+public_key_fields :: KeyAlgorithm -> Get PublicKeyMaterial
+public_key_fields RSA     = PublicMaterialRSA <$> rsa_key_fields
+public_key_fields RSA_E   = PublicMaterialRSA_E <$> rsa_key_fields
+public_key_fields RSA_S   = PublicMaterialRSA_S <$> rsa_key_fields
+public_key_fields ELGAMAL = PublicMaterialELGAMAL <$>
+	mapM (\f -> (\(MPI i) -> (f,i)) <$> get) ['p', 'g', 'y']
+public_key_fields DSA     = do
+	MPI p <- get
+	MPI q <- get
+	MPI g <- get
+	MPI y <- get
+	return $ PublicMaterialDSA $ DSA.PublicKey (DSA.Params p g q) y
+public_key_fields kalgo   = PublicMaterialOther kalgo <$> getRemainingByteString
+
+rsa_key_fields :: Get RSA.PublicKey
+rsa_key_fields = do
+	(_,bytes,n) <- getMPIandSize
+	MPI e <- get
+	return $ RSA.PublicKey (fromIntegral bytes) n e
+
+encode_public_key_fields :: PublicKeyMaterial -> (KeyAlgorithm, B.ByteString)
+encode_public_key_fields (PublicMaterialRSA (RSA.PublicKey _ n e)) =
+	(RSA, B.concat $ map (encode . MPI) [n,e])
+encode_public_key_fields (PublicMaterialRSA_E (RSA.PublicKey _ n e)) =
+	(RSA_E, B.concat $ map (encode . MPI) [n,e])
+encode_public_key_fields (PublicMaterialRSA_S (RSA.PublicKey _ n e)) =
+	(RSA_S, B.concat $ map (encode . MPI) [n,e])
+encode_public_key_fields (PublicMaterialELGAMAL fields) =
+	(ELGAMAL, B.concat $ map (encode . MPI . (fields !)) ['p', 'g', 'y'])
+encode_public_key_fields (PublicMaterialDSA
+		(DSA.PublicKey (DSA.Params p g q) y)
+	) = (DSA, B.concat $ map (encode . MPI) [p,q,g,y])
+encode_public_key_fields (PublicMaterialOther kalgo bytes) =
+	(kalgo, bytes)
+
+data SecretKeyMaterial =
+	SecretMaterialRSA RSA.KeyPair |
+	SecretMaterialRSA_E RSA.KeyPair |
+	SecretMaterialRSA_S RSA.KeyPair |
+	SecretMaterialELGAMAL [(Char,Integer)] |
+	SecretMaterialDSA DSA.KeyPair |
+	SecretMaterialEncrypted PublicKeyMaterial B.ByteString |
+	SecretMaterialOther PublicKeyMaterial B.ByteString
+	deriving (Show, Read, Eq)
+
+-- http://tools.ietf.org/html/rfc4880#section-5.5.3
+secret_key_fields :: PublicKeyMaterial -> Get SecretKeyMaterial
+secret_key_fields (PublicMaterialRSA pub) =
+	SecretMaterialRSA <$> secret_rsa_fields pub
+secret_key_fields (PublicMaterialRSA_E pub) =
+	SecretMaterialRSA_E <$> secret_rsa_fields pub
+secret_key_fields (PublicMaterialRSA_S pub) =
+	SecretMaterialRSA_S <$> secret_rsa_fields pub
+secret_key_fields (PublicMaterialELGAMAL pub) = do
+	MPI x <- get
+	return $ SecretMaterialELGAMAL (('x',x):pub)
+secret_key_fields (PublicMaterialDSA pub) = do
+	MPI x <- get
+	return $ SecretMaterialDSA $ DSA.KeyPair
+		(DSA.public_params pub) (DSA.public_y pub) x
+secret_key_fields pub = SecretMaterialOther pub <$> getRemainingByteString
+
+encode_secret_key_fields :: SecretKeyMaterial -> (PublicKeyMaterial, B.ByteString)
+encode_secret_key_fields (SecretMaterialRSA (RSA.KeyPair
+		(RSA.PrivateKey pub d q p _ _ u)
+	)) = (PublicMaterialRSA pub, B.concat $ map (encode . MPI) [d,p,q,u])
+encode_secret_key_fields (SecretMaterialRSA_E (RSA.KeyPair
+		(RSA.PrivateKey pub d q p _ _ u)
+	)) = (PublicMaterialRSA_E pub, B.concat $ map (encode . MPI) [d,p,q,u])
+encode_secret_key_fields (SecretMaterialRSA_S (RSA.KeyPair
+		(RSA.PrivateKey pub d q p _ _ u)
+	)) = (PublicMaterialRSA_S pub, B.concat $ map (encode . MPI) [d,p,q,u])
+encode_secret_key_fields (SecretMaterialELGAMAL fields) = (
+		PublicMaterialELGAMAL $ filter ((/='x').fst) fields,
+		encode $ MPI $ fields ! 'x'
+	)
+encode_secret_key_fields (SecretMaterialDSA (DSA.KeyPair param y x)) =
+	(PublicMaterialDSA (DSA.PublicKey param y), encode $ MPI x)
+encode_secret_key_fields (SecretMaterialEncrypted pub bytes) = (pub, bytes)
+encode_secret_key_fields (SecretMaterialOther pub bytes) = (pub, bytes)
+
+secret_rsa_fields :: RSA.PublicKey -> Get RSA.KeyPair
+secret_rsa_fields pub = do
+	MPI d <- get
+	MPI p <- get
+	MPI q <- get
+	MPI u <- get
+	-- Invert p and q because u is pinv not qinv
+	return $ RSA.KeyPair $ RSA.PrivateKey pub d q p
+		(d `mod` (q-1))
+		(d `mod` (p-1))
+		u
+
+public_material :: Packet -> PublicKeyMaterial
+public_material (PublicKeyPacket {pkey = pkey}) = pkey
+public_material (SecretKeyPacket {skey = (SecretMaterialRSA pair)}) =
+	PublicMaterialRSA $ RSA.toPublicKey pair
+public_material (SecretKeyPacket {skey = (SecretMaterialRSA_E pair)}) =
+	PublicMaterialRSA_E $ RSA.toPublicKey pair
+public_material (SecretKeyPacket {skey = (SecretMaterialRSA_S pair)}) =
+	PublicMaterialRSA_S $ RSA.toPublicKey pair
+public_material (SecretKeyPacket {skey = (SecretMaterialELGAMAL pair)}) =
+	PublicMaterialELGAMAL $ filter ((/='x').fst) pair
+public_material (SecretKeyPacket {skey = (SecretMaterialDSA pair)}) =
+	PublicMaterialDSA $ DSA.toPublicKey pair
+public_material (SecretKeyPacket {skey = (SecretMaterialEncrypted pub _)}) = pub
+public_material (SecretKeyPacket {skey = (SecretMaterialOther pub _)}) = pub
+public_material p = error $ "No public key material for packet: " ++ show p
 
 data S2K =
 	SimpleS2K HashAlgorithm |
@@ -818,6 +915,13 @@ instance Enum KeyAlgorithm where
 instance BINARY_CLASS KeyAlgorithm where
 	put = put . enum_to_word8
 	get = fmap enum_from_word8 get
+
+key_packet_algorithm :: Packet -> KeyAlgorithm
+key_packet_algorithm (PublicKeyPacket{pkey = pkey}) =
+	fst $ encode_public_key_fields pkey
+key_packet_algorithm p@(SecretKeyPacket{}) =
+	fst $ encode_public_key_fields (public_material p)
+key_packet_algorithm p = error $ "No key algorithm in that packet: " ++ show p
 
 data SymmetricAlgorithm = Unencrypted | IDEA | TripleDES | CAST5 | Blowfish | AES128 | AES192 | AES256 | Twofish | SymmetricAlgorithm Word8
 	deriving (Show, Read, Eq)
@@ -977,11 +1081,15 @@ instance BINARY_CLASS MPI where
 				if x == 0 then Nothing else
 					Just (fromIntegral x, x `shiftR` 8)
 			) i
-	get = do
-		length <- fmap fromIntegral (get :: Get Word16)
-		bytes <- getSomeByteString =<< assertProp (>0) ((length + 7) `div` 8)
-		return (MPI (B.foldl (\a b ->
-			a `shiftL` 8 .|. fromIntegral b) 0 bytes))
+	get = fmap (\(_,_,i) -> MPI i) getMPIandSize
+
+getMPIandSize :: Get (Word64, Word64, Integer)
+getMPIandSize = do
+	bitSize <- fmap fromIntegral (get :: Get Word16)
+	byteSize <- assertProp (>0) ((bitSize + 7) `div` 8)
+	bytes <- getSomeByteString byteSize
+	return (bitSize, byteSize,
+		B.foldl (\a b -> a `shiftL` 8 .|. fromIntegral b) 0 bytes)
 
 listUntilEnd :: (BINARY_CLASS a) => Get [a]
 listUntilEnd = do

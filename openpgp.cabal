@@ -140,7 +140,8 @@ library
                 utf8-string,
                 binary >= 0.6.4.0,
                 zlib,
-                bzlib
+                bzlib,
+                crypto-pubkey-types >= 0.3.0
 
 test-suite tests
         type:       exitcode-stdio-1.0
@@ -156,6 +157,7 @@ test-suite tests
                 binary >= 0.6.4.0,
                 zlib,
                 bzlib,
+                crypto-pubkey-types >= 0.3.0,
                 HUnit,
                 QuickCheck >= 2.4.1.1,
                 quickcheck-instances,

@@ -1,11 +1,9 @@
---- Data/OpenPGP/Arbitrary.hs	2012-04-27 12:38:11.492411339 -0500
-+++ arb.s	2012-04-27 12:37:57.176469214 -0500
+--- /tmp/Arbitrary.hs	2014-01-05 16:06:55.100958114 -0500
++++ Data/OpenPGP/Arbitrary.hs	2014-01-05 16:11:22.200655463 -0500
 @@ -1 +1,2 @@
 +{-# OPTIONS_GHC -fno-warn-orphans -fno-warn-unused-imports #-}
  module Data.OpenPGP.Arbitrary where
-@@ -14,13 +14,18 @@
-                    1 -> do x1 <- arbitrary
-                            x2 <- arbitrary
+@@ -20,9 +21,14 @@
                             x3 <- arbitrary
 -                           x4 <- arbitrary
 -                           x5 <- arbitrary
@@ -25,9 +23,45 @@
 +                                           keyid <- vectorOf 16 (elements (['0'..'9'] ++ ['A'..'F']))
 +                                           return (signaturePacket version x1 x2 x3 [] [SignatureCreationTimePacket creation_time, IssuerPacket keyid] x6 x7)
                     2 -> do x1 <- arbitrary
+@@ -79,15 +85,5 @@
+         arbitrary
+-          = do x <- choose (0 :: Int, 5)
++          = do x <- choose (0 :: Int, 0)
+                case x of
+                    0 -> do x1 <- arbitrary
+-                           return (PublicMaterialRSA x1)
+-                   1 -> do x1 <- arbitrary
+-                           return (PublicMaterialRSA_E x1)
+-                   2 -> do x1 <- arbitrary
+-                           return (PublicMaterialRSA_S x1)
+-                   3 -> do x1 <- arbitrary
+-                           return (PublicMaterialELGAMAL x1)
+-                   4 -> do x1 <- arbitrary
+-                           return (PublicMaterialDSA x1)
+-                   5 -> do x1 <- arbitrary
                             x2 <- arbitrary
-                            x3 <- arbitrary
-@@ -88,5 +93,5 @@
+@@ -99,18 +95,8 @@
+         arbitrary
+-          = do x <- choose (0 :: Int, 6)
++          = do x <- choose (0 :: Int, 1)
+                case x of
+                    0 -> do x1 <- arbitrary
+-                           return (SecretMaterialRSA x1)
+-                   1 -> do x1 <- arbitrary
+-                           return (SecretMaterialRSA_E x1)
+-                   2 -> do x1 <- arbitrary
+-                           return (SecretMaterialRSA_S x1)
+-                   3 -> do x1 <- arbitrary
+-                           return (SecretMaterialELGAMAL x1)
+-                   4 -> do x1 <- arbitrary
+-                           return (SecretMaterialDSA x1)
+-                   5 -> do x1 <- arbitrary
+                            x2 <- arbitrary
+                            return (SecretMaterialEncrypted x1 x2)
+-                   6 -> do x1 <- arbitrary
++                   1 -> do x1 <- arbitrary
+                            x2 <- arbitrary
+@@ -131,5 +117,5 @@
                             x2 <- arbitrary
 -                           x3 <- arbitrary
 +                           x3 <- fmap decode_s2k_count arbitrary
@@ -35,74 +69,51 @@
 -                   3 -> do x1 <- arbitrary
 +                   3 -> do x1 <- suchThat arbitrary (`notElem` [0,1,3])
                             x2 <- arbitrary
-@@ -73,7 +72,7 @@
-                    4 -> return SHA384
-                    5 -> return SHA512
+@@ -150,3 +136,3 @@
                     6 -> return SHA224
 -                   7 -> do x1 <- arbitrary
 +                   7 -> do x1 <- suchThat arbitrary (`notElem` [01,02,03,08,09,10,11])
                             return (HashAlgorithm x1)
-                    _ -> error "FATAL ERROR: Arbitrary instance, logic bug"
-
-@@ -90,7 +89,7 @@
-                    5 -> return ECC
-                    6 -> return ECDSA
+@@ -167,3 +153,3 @@
                     7 -> return DH
 -                   8 -> do x1 <- arbitrary
 +                   8 -> do x1 <- suchThat arbitrary (`notElem` [01,02,03,16,17,18,19,21])
                             return (KeyAlgorithm x1)
-                    _ -> error "FATAL ERROR: Arbitrary instance, logic bug"
-
-@@ -108,7 +107,7 @@
-                    6 -> return AES192
-                    7 -> return AES256
+@@ -185,3 +171,3 @@
                     8 -> return Twofish
 -                   9 -> do x1 <- arbitrary
 +                   9 -> do x1 <- suchThat arbitrary (`notElem` [00,01,02,03,04,07,08,09,10])
                             return (SymmetricAlgorithm x1)
-                    _ -> error "FATAL ERROR: Arbitrary instance, logic bug"
-
-@@ -121,7 +120,7 @@
-                    1 -> return ZIP
-                    2 -> return ZLIB
+@@ -198,3 +184,3 @@
                     3 -> return BZip2
 -                   4 -> do x1 <- arbitrary
 +                   4 -> do x1 <- suchThat arbitrary (`notElem` [0,1,2,3])
                             return (CompressionAlgorithm x1)
-                    _ -> error "FATAL ERROR: Arbitrary instance, logic bug"
-
-@@ -135,7 +134,7 @@
-                    2 -> return KeyCompromised
-                    3 -> return KeyRetired
+@@ -212,3 +198,3 @@
                     4 -> return UserIDInvalid
 -                   5 -> do x1 <- arbitrary
 +                   5 -> do x1 <- suchThat arbitrary (`notElem` [00,01,02,03,32])
                             return (RevocationCode x1)
-                    _ -> error "FATAL ERROR: Arbitrary instance, logic bug"
-
-@@ -134,7 +133,7 @@
-
- instance Arbitrary MPI where
+@@ -246,3 +232,3 @@
          arbitrary
 -          = do x1 <- arbitrary
 +          = do x1 <- suchThat arbitrary (>=0)
                 return (MPI x1)
-
-
-@@ -160,5 +160,5 @@
-                            return (PreferredSymmetricAlgorithmsPacket x1)
-                    8 -> do x1 <- arbitrary
+@@ -273,5 +259,5 @@
                             x2 <- arbitrary
 -                           x3 <- arbitrary
 +                           x3 <- vectorOf 40 (elements (['0'..'9'] ++ ['A'..'F']))
                             return (RevocationKeyPacket x1 x2 x3)
-@@ -166 +165 @@
 -                   9 -> do x1 <- arbitrary
 +                   9 -> do x1 <- vectorOf 16 (elements (['0'..'9'] ++ ['A'..'F']))
-@@ -217 +216 @@
+                            return (IssuerPacket x1)
+@@ -312,7 +298,6 @@
+                             return (SignatureTargetPacket x1 x2 x3)
 -                   22 -> do x1 <- arbitrary
 +                   22 -> do x1 <- suchThat arbitrary isSignaturePacket
-@@ -169,2 +168 @@
+                             return (EmbeddedSignaturePacket x1)
+                    23 -> do x1 <- arbitrary
 -                            x2 <- arbitrary
 -                            return (UnsupportedSignatureSubpacket x1 x2)
 +                            return (UnsupportedSignatureSubpacket 105 x1)
+                    _ -> error "FATAL ERROR: Arbitrary instance, logic bug"
