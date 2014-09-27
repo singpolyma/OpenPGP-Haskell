@@ -116,6 +116,8 @@ extra-source-files:
         tests/data/000077-002.sig,
         tests/data/000078-012.ring_trust,
         tests/data/002182-002.sig,
+        tests/data/3F5BBA0B0694BEB6000005-002.sig,
+        tests/data/3F5BBA0B0694BEB6000017-002.sig,
         tests/data/compressedsig-bzip2.gpg,
         tests/data/compressedsig.gpg,
         tests/data/compressedsig-zlib.gpg,
