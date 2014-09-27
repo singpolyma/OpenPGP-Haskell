@@ -669,7 +669,9 @@ parse_packet  8 = do
 -- EncryptedDataPacket, http://tools.ietf.org/html/rfc4880#section-5.7
 parse_packet  9 = EncryptedDataPacket 0 <$> getRemainingByteString
 -- MarkerPacket, http://tools.ietf.org/html/rfc4880#section-5.8
-parse_packet 10 = return MarkerPacket
+parse_packet 10 = do
+	_ <- assertProp (== B.fromString "PGP") =<< getSomeByteString 3
+	return MarkerPacket
 -- LiteralDataPacket, http://tools.ietf.org/html/rfc4880#section-5.9
 parse_packet 11 = do
 	format <- get
