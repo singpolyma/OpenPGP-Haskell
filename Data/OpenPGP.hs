@@ -627,10 +627,14 @@ parse_packet  5 = do
 -- PublicKeyPacket, http://tools.ietf.org/html/rfc4880#section-5.5.2
 parse_packet  6 = do
 	version <- get :: Get Word8
-	case version of
-		3 -> do
+	let getVersionPacket version
+		| version `elem` [2, 3, 4] = do
 			timestamp <- get
-			days <- get
+			days <-
+				if version == 4 then
+					return Nothing
+				else
+					fmap Just get
 			algorithm <- get
 			key <- mapM (\f -> fmap ((,)f) get) (public_key_fields algorithm)
 			return PublicKeyPacket {
@@ -639,21 +643,11 @@ parse_packet  6 = do
 				key_algorithm = algorithm,
 				key = key,
 				is_subkey = False,
-				v3_days_of_validity = Just days
+				v3_days_of_validity = days
 			}
-		4 -> do
-			timestamp <- get
-			algorithm <- get
-			key <- mapM (\f -> fmap ((,)f) get) (public_key_fields algorithm)
-			return PublicKeyPacket {
-				version = 4,
-				timestamp = timestamp,
-				key_algorithm = algorithm,
-				key = key,
-				is_subkey = False,
-				v3_days_of_validity = Nothing
-			}
-		x -> fail $ "Unsupported PublicKeyPacket version " ++ show x ++ "."
+		| otherwise =
+			fail $ "Unsupported PublicKeyPacket version " ++ show version ++ "."
+	getVersionPacket version
 -- Secret-SubKey Packet, http://tools.ietf.org/html/rfc4880#section-5.5.1.4
 parse_packet  7 = do
 	p <- parse_packet 5
