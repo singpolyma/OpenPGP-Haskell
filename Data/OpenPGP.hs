@@ -349,7 +349,7 @@ secret_key_fields _       = undefined -- Nothing in the spec. Maybe empty
 (!) :: (Eq k) => [(k,v)] -> k -> v
 (!) xs k = let Just x = lookup k xs in x
 
--- Need this seperate for trailer calculation
+-- Need this separate for trailer calculation
 signature_packet_start :: Packet -> B.ByteString
 signature_packet_start (SignaturePacket {
 	version = 4,
