@@ -1,7 +1,7 @@
 ifdef CEREAL
-GHCFLAGS=-Wall -O2 -DCEREAL -fno-warn-name-shadowing -XHaskell98
+GHCFLAGS=-Wall -O2 -DCEREAL -fno-warn-name-shadowing -fno-warn-tabs -XHaskell98
 else
-GHCFLAGS=-Wall -O2 -fno-warn-name-shadowing -XHaskell98
+GHCFLAGS=-Wall -O2 -fno-warn-name-shadowing -fno-warn-tabs -XHaskell98
 endif
 
 ifdef TRAVIS
