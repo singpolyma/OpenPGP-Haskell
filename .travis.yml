@@ -2,5 +2,11 @@ language: haskell
 env:
   -
   - CEREAL=1
-before_install: "cabal install happy && cabal install derive && cabal install hlint && cabal install cereal"
+addons:
+  apt:
+    packages:
+      - happy
+      - hlint
+      - haskell-derive-utils
+before_install: "cabal install cereal"
 script: "make Data/OpenPGP/Arbitrary.hs && make report.html && [ ! -e report.html ] && make dist/setup-config && make tests/suite && tests/suite --plain"
