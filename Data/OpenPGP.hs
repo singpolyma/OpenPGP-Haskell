@@ -68,8 +68,15 @@ module Data.OpenPGP (
 import Numeric
 import Control.Monad
 import Control.Arrow
+#ifdef MIN_VERSION_base
+#if !MIN_VERSION_base(4,8,0)
 import Control.Applicative
 import Data.Monoid
+#endif
+#else
+import Control.Applicative
+import Data.Monoid
+#endif
 import Data.Bits
 import Data.Word
 import Data.Char
