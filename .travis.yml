@@ -1,4 +1,6 @@
 language: haskell
+ghc:
+  - "8.0"
 env:
   -
   - CEREAL=1
