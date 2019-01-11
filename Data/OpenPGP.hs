@@ -906,6 +906,11 @@ instance Monoid Message where
 	mempty = Message []
 	mappend (Message a) (Message b) = Message (a ++ b)
 
+#if MIN_VERSION_base(4,11,0)
+instance Semigroup Message where
+	x <> y = x `mappend` y
+#endif
+
 -- | Data needed to verify a signature
 data SignatureOver =
 	DataSignature {literal::Packet, signatures_over::[Packet]} |
